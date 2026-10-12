@@ -1,0 +1,40 @@
+{
+  "name": "elgo-finanzas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "generate:types": "payload generate:types",
+    "generate:importmap": "payload generate:importmap",
+    "migrate": "payload migrate",
+    "migrate:create": "payload migrate:create",
+    "migrate:status": "payload migrate:status",
+    "test:finanzas": "node --experimental-strip-types --no-warnings scripts/probarFinanzas.mjs"
+  },
+  "dependencies": {
+    "@payloadcms/db-postgres": "^3.0.0",
+    "@payloadcms/next": "^3.0.0",
+    "@payloadcms/translations": "^3.0.0",
+    "@vercel/blob": "^2.3.1",
+    "next": "^16.2.6",
+    "payload": "^3.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.3",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

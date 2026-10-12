@@ -1,0 +1,1188 @@
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Hoja de estilos del PANEL DE ADMINISTRACIÓN (Payload CMS) — marca ELGO
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * QUÉ ES
+ * ------
+ * Payload trae su propio diseño gris de fábrica. Este archivo lo "tropicaliza"
+ * a la marca del sitio público (paleta, tipografía, radios y sombras del
+ * rediseño de septiembre de 2026) SIN tocar una sola línea del backend: solo
+ * cambia cómo se ve lo que ya existe.
+ *
+ * CÓMO FUNCIONA
+ * -------------
+ * 1. Payload pinta todo a partir de variables CSS (`--theme-elevation-*`,
+ *    `--theme-success-*`, `--font-body`, `--style-radius-*`…). La sección 1
+ *    las redefine: con eso, el 80 % del panel cambia de color "solo".
+ * 2. La sección 2 ajusta componentes concretos por su clase (menú lateral,
+ *    tarjetas, tablas, botones, formularios, inicio de sesión).
+ * 3. La sección 3 define las clases `mx-*` que usan nuestras pantallas
+ *    propias (Bienvenida, Embudo de ventas, Qué falta para publicar).
+ *
+ * Los estilos de fábrica viven en `@layer payload-default`; este archivo no
+ * usa capas, así que gana siempre sin necesidad de `!important`.
+ *
+ * REPLICABILIDAD
+ * --------------
+ * Para otro negocio basta con cambiar los valores de la sección 1-A (los
+ * `--mx-*`). Todo lo demás se deriva de ahí. Nada de "Macauto" ni "Xalapa"
+ * está escrito en este archivo.
+ *
+ * Importado desde app/(payload)/layout.tsx, después de '@payloadcms/next/css'.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 1-A · Tokens de marca ELGO: azul marino, negro, grises y fondo blanco
+ *       (gris del logotipo #c9cdd3 sobre fondos oscuros).
+ *       Los nombres --mx-navy / --mx-teal se heredan de MacAuto: «navy» es el
+ *       color primario oscuro y «teal» el acento, sea cual sea su tono.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --mx-navy: #13294b;
+  --mx-navy-dark: #0b1a33;
+  --mx-navy-light: #1f3a63;
+  --mx-teal: #3b5f8a;
+  --mx-teal-dark: #2c4a6d;
+  --mx-teal-light: #c9cdd3;
+  --mx-teal-text: #24456f; /* azul marino legible sobre blanco (≈9:1) */
+  --mx-teal-soft: #edf1f6;
+  --mx-ink: #111317;
+  --mx-muted: #5b616b;
+  --mx-sand: #f6f7f9;
+  --mx-sand-dark: #eceef2;
+  --mx-line: #dde1e7;
+  --mx-amber: #fbbf24;
+  --mx-amber-soft: #fef6e0;
+  --mx-offer: #e63946;
+  --mx-reserved: #f4a261;
+  --mx-sold: #9ca3af;
+
+  --mx-radius-card: 16px;
+  --mx-radius-panel: 28px;
+  --mx-radius-pill: 999px;
+  --mx-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --mx-shadow-soft: 0 14px 34px rgba(10, 20, 38, 0.08);
+  --mx-shadow-lift: 0 26px 60px rgba(10, 20, 38, 0.14);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 1-B · Variables de Payload → marca
+ *
+ * La escala "elevation" es la escala de grises de Payload. Aquí se vuelve una
+ * escala de grises AZULADOS (derivados del navy), igual que los neutros del
+ * sitio. success → turquesa, error → rojo de oferta, warning → ámbar/apartado.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root,
+html[data-theme='light'] {
+  --theme-elevation-0: #ffffff;
+  --theme-elevation-50: #f7f7f8;
+  --theme-elevation-100: #f0f1f3;
+  --theme-elevation-150: #e7e9ec;
+  --theme-elevation-200: #dcdfe3;
+  --theme-elevation-250: #cfd3d8;
+  --theme-elevation-300: #c0c5cb;
+  --theme-elevation-350: #afb4bb;
+  --theme-elevation-400: #9aa0a8;
+  --theme-elevation-450: #878e96;
+  --theme-elevation-500: #747b84;
+  --theme-elevation-550: #666d76;
+  --theme-elevation-600: #565d66;
+  --theme-elevation-650: #484e57;
+  --theme-elevation-700: #3b4049;
+  --theme-elevation-750: #2f343c;
+  --theme-elevation-800: #252930;
+  --theme-elevation-850: #1f2329;
+  --theme-elevation-900: #181b20;
+  --theme-elevation-950: #121418;
+  --theme-elevation-1000: #0c0e11;
+
+  --theme-success-50: #edf1f6;
+  --theme-success-100: #dfe6ef;
+  --theme-success-150: #ccd7e5;
+  --theme-success-200: #b5c5da;
+  --theme-success-250: #9db2cd;
+  --theme-success-300: #86a0c0;
+  --theme-success-350: #6f8db3;
+  --theme-success-400: #5a7ba6;
+  --theme-success-450: #476c9b;
+  --theme-success-500: #3b5f8a;
+  --theme-success-550: #33547b;
+  --theme-success-600: #2c4a6d;
+  --theme-success-650: #26405f;
+  --theme-success-700: #203752;
+  --theme-success-750: #1b2e45;
+  --theme-success-800: #16263a;
+  --theme-success-850: #121f30;
+  --theme-success-900: #0e1826;
+  --theme-success-950: #0a111b;
+
+  --theme-error-50: #fdf2f3;
+  --theme-error-100: #fbe4e6;
+  --theme-error-150: #f8ccd0;
+  --theme-error-200: #f4b3b9;
+  --theme-error-250: #f09aa2;
+  --theme-error-300: #ec818b;
+  --theme-error-350: #e96874;
+  --theme-error-400: #e64f5d;
+  --theme-error-450: #e63946;
+  --theme-error-500: #d32f3c;
+  --theme-error-550: #be2a36;
+  --theme-error-600: #a8252f;
+  --theme-error-650: #922029;
+  --theme-error-700: #7c1c23;
+  --theme-error-750: #66171d;
+  --theme-error-800: #511318;
+  --theme-error-850: #3c0e12;
+  --theme-error-900: #2a0a0d;
+  --theme-error-950: #1a0608;
+
+  --theme-warning-50: #fef6e0;
+  --theme-warning-100: #fdecc8;
+  --theme-warning-150: #fbdfa6;
+  --theme-warning-200: #f9d184;
+  --theme-warning-250: #f7c266;
+  --theme-warning-300: #f7b155;
+  --theme-warning-350: #f4a261;
+  --theme-warning-400: #ee923f;
+  --theme-warning-450: #e4832f;
+  --theme-warning-500: #d47526;
+  --theme-warning-550: #c0681f;
+  --theme-warning-600: #aa5b1a;
+  --theme-warning-650: #934e16;
+  --theme-warning-700: #7d4213;
+  --theme-warning-750: #683710;
+  --theme-warning-800: #552d0e;
+  --theme-warning-850: #42230b;
+  --theme-warning-900: #301a08;
+  --theme-warning-950: #1f1105;
+
+  --theme-bg: #ffffff; /* ELGO: fondo blanco */
+  --theme-input-bg: #ffffff;
+  --theme-text: var(--mx-ink);
+  --theme-border-color: var(--mx-line);
+  --theme-overlay: rgba(11, 26, 51, 0.55);
+
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: 'SF Mono', Menlo, Consolas, Monaco, monospace;
+
+  --style-radius-s: 10px;
+  --style-radius-m: 14px;
+  --style-radius-l: 20px;
+
+  --accessibility-outline: 2px solid var(--mx-teal);
+  --accessibility-outline-offset: 2px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 2 · Componentes de Payload
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* 2.1 Base tipográfica ─────────────────────────────────────────────────── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+.list-header__title,
+.doc-header__title,
+.card__title {
+  color: var(--mx-navy);
+  letter-spacing: -0.02em;
+}
+
+h1,
+.list-header__title,
+.doc-header__title {
+  font-weight: 800;
+}
+
+h2,
+h3 {
+  font-weight: 700;
+}
+
+a {
+  color: var(--mx-teal-text);
+}
+
+/* Barra de desplazamiento discreta, a tono */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-elevation-250) transparent;
+}
+
+/* 2.2 Menú lateral: navy, como el pie del sitio ────────────────────────── */
+.nav {
+  background: linear-gradient(180deg, var(--mx-navy) 0%, var(--mx-navy-dark) 100%);
+  color: #ffffff;
+  border-right: 0;
+  border-left: 0;
+}
+
+.nav__scroll {
+  --nav-padding-inline-start: 22px;
+  --nav-padding-inline-end: 22px;
+}
+
+/* Etiqueta de cada bloque del menú (Finanzas, Sistema…) */
+.nav-group__toggle {
+  color: var(--mx-teal-light);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  opacity: 0.95;
+}
+
+.nav-group__toggle:hover,
+.nav-group__toggle:focus-visible {
+  color: #ffffff;
+}
+
+.nav-group__toggle .stroke,
+.nav-group__indicator svg .stroke {
+  stroke: rgba(255, 255, 255, 0.55);
+}
+
+.nav-group__toggle:hover .stroke,
+.nav-group__toggle:focus-visible .stroke {
+  stroke: #ffffff;
+}
+
+.nav-group {
+  margin-bottom: 18px;
+}
+
+/* Enlaces del menú */
+.nav__link,
+.nav a.nav__link {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14.5px;
+  line-height: 20px;
+  padding: 7px 10px;
+  margin-inline-start: -10px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.nav a.nav__link:hover,
+.nav a.nav__link:focus-visible {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+}
+
+.nav__link.active,
+.nav__link:has(.nav__link-indicator) {
+  color: #ffffff;
+  font-weight: 600;
+  background: rgba(59, 95, 138, 0.18);
+}
+
+.nav__link-indicator {
+  inset-inline-start: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--mx-teal);
+}
+
+/* Etiqueta del bloque "Informes" que precede a los enlaces propios del menú
+   (components/admin/EnlaceReporte.tsx). Mismo aspecto que las etiquetas de
+   los bloques de Payload. */
+.mx-nav-etiqueta {
+  color: var(--mx-teal-light);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 6px 0 8px;
+  opacity: 0.95;
+}
+
+/* Controles de abajo (ajustes y cerrar sesión) */
+.nav__controls {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 14px;
+}
+
+.nav__controls a,
+.nav__controls button,
+.nav__controls .btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.nav__controls .stroke,
+.nav__controls svg .stroke,
+.nav__log-out .stroke {
+  stroke: rgba(255, 255, 255, 0.85);
+}
+
+.nav__controls .fill,
+.nav__controls svg .fill {
+  fill: rgba(255, 255, 255, 0.85);
+}
+
+.nav__controls a:hover .stroke,
+.nav__controls button:hover .stroke {
+  stroke: var(--mx-teal-light);
+}
+
+/* Botón de cerrar el menú en el celular */
+.nav__mobile-close .stroke,
+.nav__header .hamburger .stroke {
+  stroke: #ffffff;
+}
+
+/* Menú emergente de "ajustes" dentro del menú navy debe seguir legible */
+.nav .popup__content {
+  color: var(--mx-ink);
+}
+
+/* 2.3 Encabezado superior ───────────────────────────────────────────────── */
+.app-header {
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--mx-line);
+}
+
+.app-header__bg {
+  display: none;
+}
+
+.step-nav a,
+.step-nav span {
+  color: var(--mx-muted);
+  font-weight: 500;
+}
+
+.step-nav a:hover {
+  color: var(--mx-navy);
+}
+
+.step-nav__home {
+  width: 22px;
+  height: 22px;
+}
+
+/* 2.4 Lienzo y tarjetas del tablero ────────────────────────────────────── */
+.template-default__wrap {
+  background: #ffffff; /* ELGO: fondo blanco */
+}
+
+.collections__label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mx-teal-text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.collections__label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--mx-line);
+}
+
+.collections__group {
+  --gap: 14px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-radius-card);
+  padding: 18px 18px 18px 20px;
+  box-shadow: var(--mx-shadow-card);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.card--has-onclick:hover {
+  background: #ffffff;
+  border-color: var(--mx-teal);
+  box-shadow: var(--mx-shadow-soft);
+  transform: translateY(-2px);
+}
+
+.card__title {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 700;
+}
+
+.card__actions .btn__icon {
+  border-radius: var(--mx-radius-pill);
+  border-color: var(--mx-line);
+}
+
+.card__actions .btn__icon:hover {
+  border-color: var(--mx-teal);
+  background: var(--mx-teal-soft);
+  color: var(--mx-teal-text);
+}
+
+/* 2.5 Botones ──────────────────────────────────────────────────────────── */
+.btn--style-primary {
+  --bg-color: var(--mx-navy);
+  --color: #ffffff;
+  --hover-bg: var(--mx-navy-dark);
+  --hover-color: #ffffff;
+}
+
+.btn--style-primary.btn--disabled {
+  --bg-color: var(--theme-elevation-200);
+  --color: var(--theme-elevation-600);
+}
+
+.btn--style-secondary {
+  --color: var(--mx-navy);
+  --bg-color: #ffffff;
+  --btn-border: 1px solid #c9d0da;
+  --hover-color: var(--mx-navy);
+  --hover-btn-border: 1px solid var(--mx-navy);
+}
+
+.btn--style-pill {
+  --bg-color: var(--mx-sand-dark);
+  --color: var(--mx-navy);
+}
+
+/* El radio y el fondo de los botones viven en `.btn` (no en `.btn__content`) */
+.btn--style-primary,
+.btn--style-secondary,
+.btn--style-pill,
+.form-submit .btn {
+  border-radius: var(--mx-radius-pill);
+  font-weight: 600;
+}
+
+.btn--style-primary {
+  box-shadow: 0 6px 16px rgba(19, 41, 75, 0.22);
+}
+
+/* 2.6 Listados y tablas ────────────────────────────────────────────────── */
+.collection-list__header {
+  gap: 10px;
+}
+
+.list-header__title {
+  font-size: 28px;
+  line-height: 34px;
+}
+
+.table {
+  background: #ffffff;
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-radius-card);
+  box-shadow: var(--mx-shadow-card);
+}
+
+.table table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table thead {
+  color: var(--mx-muted);
+}
+
+.table thead th {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--mx-sand);
+  border-bottom: 1px solid var(--mx-line);
+}
+
+.table thead th:first-child {
+  border-top-left-radius: var(--mx-radius-card);
+}
+
+.table thead th:last-child {
+  border-top-right-radius: var(--mx-radius-card);
+}
+
+.table tbody tr:nth-child(odd) {
+  background: transparent;
+}
+
+.table tbody tr {
+  transition: background 0.12s ease;
+}
+
+.table tbody tr:hover {
+  background: var(--mx-sand);
+}
+
+.table tbody td {
+  border-bottom: 1px solid var(--mx-sand-dark);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sort-column__label {
+  color: inherit;
+}
+
+/* Buscador y filtros del listado */
+.search-filter__input,
+.list-controls .btn--style-pill .btn__content {
+  border-radius: var(--mx-radius-pill);
+}
+
+/* Paginación */
+.paginator__page--is-current {
+  background: var(--mx-navy);
+  color: #ffffff;
+  border-radius: 8px;
+}
+
+/* 2.7 Píldoras de estado (Nuevo / Contactado / Publicado…) ─────────────── */
+.pill {
+  border-radius: var(--mx-radius-pill);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding-inline: 10px;
+}
+
+.pill--style-success {
+  background: var(--mx-teal-soft);
+  color: var(--mx-teal-text);
+}
+
+.pill--style-warning {
+  background: var(--mx-amber-soft);
+  color: #8a5a00;
+}
+
+.pill--style-error {
+  background: var(--theme-error-100);
+  color: var(--theme-error-600);
+}
+
+.pill--style-light,
+.pill--style-light-gray {
+  background: var(--mx-sand-dark);
+  color: var(--theme-elevation-700);
+}
+
+/* 2.8 Formularios de edición ───────────────────────────────────────────── */
+.doc-controls {
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--mx-line);
+}
+
+.doc-header__title {
+  font-size: 26px;
+  line-height: 32px;
+}
+
+.field-label {
+  color: var(--theme-elevation-700);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.field-description {
+  color: var(--mx-muted);
+}
+
+input:not([type='checkbox']):not([type='radio']),
+textarea,
+.react-select .rs__control,
+.date-time-picker__input-wrapper {
+  box-shadow: none;
+  border-color: var(--mx-line);
+  border-radius: 10px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+input:not([type='checkbox']):not([type='radio']):hover,
+textarea:hover,
+.react-select .rs__control:not(:disabled):hover {
+  border-color: #c9d0da;
+  box-shadow: none;
+}
+
+input:not([type='checkbox']):not([type='radio']):focus,
+textarea:focus,
+.react-select .rs__control--is-focused,
+.react-select .rs__control--menu-is-open {
+  outline: none;
+  border-color: var(--mx-teal);
+  box-shadow: 0 0 0 3px rgba(59, 95, 138, 0.22);
+}
+
+/* Barra lateral del documento (estado, disponibilidad, folio…) */
+.document-fields__sidebar-wrap {
+  background: #ffffff;
+  border-left: 1px solid var(--mx-line);
+}
+
+/* Pestañas (Fotos y media, Mecánica y garantía…) */
+.tabs-field__tab-button {
+  font-weight: 600;
+  color: var(--mx-muted);
+  opacity: 1;
+}
+
+.tabs-field__tab-button--active {
+  color: var(--mx-navy);
+}
+
+.tabs-field__tab-button::after {
+  background: var(--mx-teal);
+  height: 3px;
+  border-radius: 3px;
+}
+
+/* Bloques plegables y arreglos (equipamiento, servicios) */
+.collapsible--style-default {
+  border-color: var(--mx-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.collapsible--style-default:hover {
+  border-color: #c9d0da;
+}
+
+.collapsible__toggle-wrap {
+  background: var(--mx-sand);
+}
+
+/* Casillas y radios en turquesa */
+.checkbox-input--checked .checkbox-input__input,
+.checkbox-input--checked .checkbox-input__icon {
+  background: var(--mx-teal);
+  border-color: var(--mx-teal);
+}
+
+.radio-input--is-selected .radio-input__styled-radio {
+  border-color: var(--mx-teal);
+}
+
+.radio-input--is-selected .radio-input__styled-radio::after {
+  background: var(--mx-teal);
+}
+
+/* Estado del documento (Publicado / Borrador) */
+.status__value {
+  color: var(--mx-navy);
+}
+
+/* Avisos (banner) */
+.banner {
+  border-radius: 12px;
+}
+
+.banner--type-success {
+  background: var(--mx-teal-soft);
+  color: var(--mx-teal-text);
+}
+
+/* Toasts */
+.payload-toast-item,
+.toast {
+  border-radius: 12px;
+}
+
+/* 2.9 Inicio de sesión y pantallas mínimas ─────────────────────────────── */
+.template-minimal {
+  background:
+    radial-gradient(900px 520px at 85% -10%, rgba(59, 95, 138, 0.35), transparent 60%),
+    radial-gradient(700px 420px at -10% 110%, rgba(201, 205, 211, 0.18), transparent 55%),
+    linear-gradient(160deg, var(--mx-navy) 0%, var(--mx-navy-dark) 100%);
+  color: var(--mx-ink);
+}
+
+.template-minimal__wrap {
+  background: #ffffff;
+  border-radius: var(--mx-radius-panel);
+  padding: 44px 40px 36px;
+  box-shadow: var(--mx-shadow-lift);
+}
+
+.template-minimal--width-normal .template-minimal__wrap {
+  max-width: 440px;
+}
+
+.login__brand {
+  margin-bottom: 28px;
+}
+
+.template-minimal h1 {
+  text-align: center;
+}
+
+.template-minimal .form-submit .btn {
+  width: 100%;
+}
+
+.template-minimal .form-submit .btn {
+  --btn-padding-block-start: 12px;
+  --btn-padding-block-end: 12px;
+  font-size: 15px;
+}
+
+.template-minimal .form-submit .btn .btn__content {
+  justify-content: center;
+}
+
+.template-minimal a {
+  color: var(--mx-teal-text);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .template-minimal__wrap {
+    padding: 32px 22px 28px;
+    border-radius: 20px;
+  }
+}
+
+/* En el celular (docs/61): un campo con letra menor a 16 px hace que el
+   iPhone haga zoom al tocarlo y la pantalla quede movida. Payload los pinta
+   a 12 px en pantallas chicas. */
+.template-minimal input,
+.template-minimal .field-type input {
+  font-size: 16px;
+  min-height: 46px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 3 · Clases propias (mx-*) para nuestras pantallas
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* 3.0 Marca dentro del menú (components/admin/MarcaDelPanel.tsx) */
+.mx-marca {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0 22px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  width: 100%;
+}
+
+.mx-marca__fila {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mx-marca__fila {
+  align-items: center;
+}
+
+.mx-marca__emblema {
+  height: 34px;
+  width: 34px;
+  display: block;
+  flex: none;
+}
+
+.mx-marca__nombre {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.mx-marca__sub {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* 3.1 Logotipo del inicio de sesión (components/admin/Logo.tsx) */
+.mx-logo-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* El tamaño baja con el ancho de la pantalla: cabe en un teléfono de 320 px. */
+.mx-logo-login__logo {
+  width: clamp(150px, 48vw, 210px);
+  height: auto;
+  display: block;
+}
+
+.mx-logo-login__sub {
+  color: var(--mx-muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* 3.2 Ícono del encabezado (components/admin/Icono.tsx) */
+.mx-icono {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* 3.3 Bienvenida del tablero (components/admin/Bienvenida.tsx) */
+.mx-bienvenida {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px 28px;
+  padding: 28px 30px;
+  margin-bottom: 28px;
+  border-radius: var(--mx-radius-panel);
+  color: #ffffff;
+  background:
+    radial-gradient(640px 320px at 100% 0%, rgba(59, 95, 138, 0.45), transparent 60%),
+    linear-gradient(135deg, var(--mx-navy) 0%, var(--mx-navy-light) 55%, var(--mx-navy-dark) 100%);
+  box-shadow: var(--mx-shadow-soft);
+}
+
+.mx-bienvenida::after {
+  /* arco decorativo, eco del "marco de arco" de la portada */
+  content: '';
+  position: absolute;
+  right: -90px;
+  bottom: -140px;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  border: 36px solid rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+.mx-bienvenida__texto {
+  position: relative;
+  z-index: 1;
+  min-width: 240px;
+}
+
+.mx-bienvenida__fecha {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mx-teal-light);
+  margin: 0 0 8px;
+}
+
+.mx-bienvenida__saludo {
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  margin: 0;
+}
+
+.mx-bienvenida__bajada {
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14.5px;
+  max-width: 52ch;
+}
+
+.mx-bienvenida__acciones {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mx-bienvenida__accion {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: var(--mx-radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+
+.mx-bienvenida__accion:hover {
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.mx-bienvenida__accion--teal {
+  background: var(--mx-teal);
+  color: #0b1a33;
+}
+
+.mx-bienvenida__accion--teal:hover {
+  background: var(--mx-teal-light);
+  color: #0b1a33;
+}
+
+.mx-bienvenida__accion--claro {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.mx-bienvenida__accion--claro:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .mx-bienvenida {
+    padding: 22px 20px;
+    border-radius: 20px;
+  }
+
+  .mx-bienvenida__saludo {
+    font-size: 23px;
+  }
+}
+
+/* 3.4 Pantallas de informe (Embudo de ventas, Qué falta para publicar) */
+.mx-informe {
+  padding-top: 8px;
+  padding-bottom: 48px;
+}
+
+.mx-informe__titulo {
+  margin: 0 0 6px;
+}
+
+.mx-informe__bajada {
+  color: var(--mx-muted);
+  margin: 0 0 22px;
+  max-width: 70ch;
+}
+
+.mx-informe__seccion {
+  margin-bottom: 36px;
+}
+
+.mx-informe__subtitulo {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+
+.mx-resumen {
+  display: block;
+  line-height: 1.7;
+  background: #ffffff;
+  border: 1px solid var(--mx-line);
+  border-left: 4px solid var(--mx-teal);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  box-shadow: var(--mx-shadow-card);
+}
+
+.mx-resumen > span {
+  margin-right: 18px;
+}
+
+.mx-resumen strong {
+  color: var(--mx-navy);
+  font-weight: 800;
+}
+
+.mx-aviso {
+  background: var(--mx-amber-soft);
+  border: 1px solid #f7c266;
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  color: #5c3b00;
+}
+
+.mx-aviso strong {
+  color: #3f2900;
+}
+
+.mx-tabla-wrap {
+  background: #ffffff;
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-radius-card);
+  box-shadow: var(--mx-shadow-card);
+  overflow-x: auto;
+}
+
+.mx-tabla {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.mx-tabla th {
+  background: var(--mx-sand);
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--mx-line);
+  white-space: nowrap;
+}
+
+.mx-tabla th:first-child {
+  border-top-left-radius: var(--mx-radius-card);
+}
+
+.mx-tabla th:last-child {
+  border-top-right-radius: var(--mx-radius-card);
+}
+
+.mx-tabla td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--mx-sand-dark);
+  vertical-align: top;
+}
+
+.mx-tabla tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mx-tabla tbody tr:hover {
+  background: var(--mx-sand);
+}
+
+.mx-tabla a {
+  color: var(--mx-navy);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mx-tabla a:hover {
+  color: var(--mx-teal-text);
+  text-decoration: underline;
+}
+
+.mx-tabla .mx-derecha {
+  text-align: right;
+}
+
+.mx-numero {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--mx-navy);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-sin-datos {
+  color: var(--mx-muted);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.mx-meta {
+  color: var(--mx-muted);
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.mx-nota {
+  color: var(--mx-muted);
+  font-size: 0.85em;
+  margin-top: 3px;
+}
+
+.mx-suave {
+  color: var(--mx-muted);
+}
+
+.mx-folio {
+  color: var(--theme-elevation-600);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.mx-falta {
+  color: var(--theme-error-500);
+  font-weight: 600;
+}
+
+.mx-barra-fondo {
+  background: var(--mx-sand-dark);
+  border-radius: 4px;
+  height: 8px;
+  width: 220px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.mx-barra {
+  background: linear-gradient(90deg, var(--mx-teal) 0%, var(--mx-teal-light) 100%);
+  border-radius: 4px;
+  height: 8px;
+}
+
+/* Selector de periodo (7 / 30 / 90 días) como píldoras */
+.mx-periodo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.mx-periodo__opcion {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: var(--mx-radius-pill);
+  border: 1px solid #c9d0da;
+  background: #ffffff;
+  color: var(--mx-navy);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.mx-periodo__opcion:hover {
+  background: var(--mx-sand);
+  border-color: var(--mx-navy);
+  text-decoration: none;
+}
+
+.mx-periodo__opcion--activa,
+.mx-periodo__opcion--activa:hover {
+  background: var(--mx-navy);
+  border-color: var(--mx-navy);
+  color: #ffffff;
+}

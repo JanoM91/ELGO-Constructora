@@ -1,0 +1,87 @@
+# .github/workflows/ci.yml — Orthopedic Vet's Finanzas
+#
+# Revisa cada Pull Request y cada push a main:
+#   1. Que los tipos de TypeScript cuadren  (tsc --noEmit)
+#   2. Que el linter pase                   (eslint .)
+#   3. Que el sitio compile                 (next build)
+#   4. Que las dependencias no traigan CVEs conocidos (Trivy, solo informa)
+#
+# Node 24 porque es la version que usa Vercel en este proyecto (verificado
+# en Project Settings). Probar en otra version seria probar otro runtime.
+
+name: CI Guardrails
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# Si llegan commits nuevos a la misma rama, cancela la corrida anterior.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# El runner solo necesita leer el codigo.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Node/TS Guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Traer el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Tipos de TypeScript
+        run: npx tsc --noEmit
+
+      - name: Linter
+        run: npm run lint
+
+      - name: Pruebas de Finanzas (reglas de dinero y permisos, sin base de datos)
+        run: npm run test:finanzas
+
+      - name: Compilar para produccion
+        run: npm run build
+        env:
+          # Valores ficticios: solo sirven para que el build no falle por
+          # variables ausentes. Ninguno es un secreto real.
+          NEXT_PUBLIC_SITE_URL: https://example.vercel.app
+          NEXT_PUBLIC_SITE_NAME: "Orthopedic Vet's Medical"
+          NEXT_PUBLIC_LOCATION_CITY: Xalapa
+          PAYLOAD_SECRET: ci-only-not-a-real-secret
+          DATABASE_URL: postgres://dummy:dummy@localhost:5432/dummy
+          NEXT_TELEMETRY_DISABLED: '1'
+
+  audit:
+    name: Dependencies Audit (Trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Traer el codigo
+        uses: actions/checkout@v4
+
+      - name: Buscar CVEs en las dependencias
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          # Solo vulnerabilidades. Sin el escaner de secretos, que da ruido.
+          scanners: 'vuln'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          # exit-code 0 = solo informa, no tumba la corrida.
+          # Subir a 1 cuando el reporte este limpio y se sepa que se sostiene.
+          exit-code: '0'

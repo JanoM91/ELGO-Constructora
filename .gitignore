@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.*
+!.env.example
+media/
+*.log
+.DS_Store
+.vercel
+.claude/
+tsconfig.tsbuildinfo
+
+# Carpeta local para archivos que el entorno del asistente no puede borrar
+_to_delete/
+
+# Paquetes de entrega del asistente: son temporales, no van al repositorio
+_entrega/
+
+# Instructivos y entregables que Claude manda por el chat y se guardan aquí
+Claude outputs/
