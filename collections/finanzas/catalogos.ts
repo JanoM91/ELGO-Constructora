@@ -187,5 +187,18 @@ export const FinConfiguracion: GlobalConfig = {
           'Desde aquí empieza a contar Finanzas. Lo anterior entra como saldos iniciales e inventario de apertura, nunca como entradas o gastos del periodo.',
       },
     },
+    /* Avisos por correo (MacAuto docs/63). Vacío = superadministradores y
+       roles con «Corregir, clasificar y anular». */
+    {
+      name: 'avisosClasificacion',
+      label: 'Quién recibe el aviso de categorías u obras propuestas',
+      type: 'relationship',
+      relationTo: 'users',
+      hasMany: true,
+      admin: {
+        description:
+          'Cuando alguien registra una entrada o un gasto con una categoría, obra o área que no existe, se les manda un correo para clasificarlo. Si lo dejas vacío, le llega a los superadministradores y a los roles que pueden «Corregir, clasificar y anular».',
+      },
+    },
   ],
 }

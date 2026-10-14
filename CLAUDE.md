@@ -10,7 +10,8 @@ Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (com
 - **Base de datos: PostgreSQL en Supabase** (proyecto pendiente de crear). `DATABASE_URL` con un rol propio dueño de las tablas (`payload_app`) por el pooler en modo transacción (puerto 6543). La app NO usa la API REST de Supabase: Payload se conecta directo a Postgres.
 - **Esquema por migraciones** (`migrations/`), con `push: false`. En producción Payload aplica solas las migraciones pendientes al arrancar (`prodMigrations`).
 - Comprobantes en un almacén **privado** de Vercel Blob (`FINANZAS_BLOB_READ_WRITE_TOKEN`).
-- Nota de voz: el **dictado del navegador** convierte la voz en texto y **Claude** (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`) lo interpreta y propone la obra. No se sube audio. Sin llave, responde 503 y lo demás funciona.
+- IA con **Claude** (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`) en `lib/finanzas/lectura.ts` y la nota de voz: interpreta la **nota de voz**, lee la **foto de ticket** y arma los **pagos a plazos**. La voz siempre pasa por el **dictado del navegador** (no se sube audio). Sin llave, esas tres responden 503 y lo demás funciona.
+- Avisos por correo (`lib/notify.ts`, Resend: `RESEND_API_KEY`, `LEADS_FROM_EMAIL`) cuando alguien propone una categoría u obra que no existe. Sin llaves no truena: el pendiente se ve en Pendientes.
 - Deploy: Vercel (producción = rama `main`).
 - Una instalación (base, Vercel y Blob propios) por empresa. Ver «Pendiente» en `docs/OPERACION.md` sobre multiempresa.
 
@@ -31,6 +32,14 @@ Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (com
 - `GET /api/finanzas/operaciones?obra=<id>` filtra movimientos por obra.
 - Catálogo sugerido (botón en Configuración): 3 áreas de soporte y 29 categorías de constructora. Los conceptos de obra **no** traen área sugerida: al registrarlos se elige la obra.
 - Roles sugeridos: Dueño, Administración, Compras, Residente de obra.
+
+## Heredado de MacAuto (14-oct-2026; docs/63 y 68 de ese repo)
+
+- **Propuestas**: quien registra puede escribir una categoría u obra que no existe (`categoriaPropuesta`, `actividadPropuesta`); queda pendiente de asignar y se avisa por correo a quien se elija en Configuración (`avisosClasificacion`). Al clasificar, administración la da de alta (`crearCategoria`, `crearActividad` + `tipoActividad` obra/área). Equivale a los «autos provisionales» de MacAuto, que aquí no existen.
+- **Foto de ticket** (`POST ticket`, `Ticket.tsx`, `Revisar.tsx`): Claude lee el ticket; se guarda un gasto por concepto (`grupoTicket`, `porRevisar`) repartiendo el total; quien capturó lo completa o lo descarta.
+- **Pagos a plazos** (`POST plazos/interpretar` y `plazos`, `Plazos.tsx`): se dicta el plan, Claude lo interpreta, se guarda una operación con `calendario` (cuotas) y los pagos ya hechos.
+- Migración `20261014_193722_propuestas_tickets_plazos`.
+- **No** se trajo el CRM de clientes de MacAuto (propio de la agencia).
 
 ## Cambios al modelo de datos
 

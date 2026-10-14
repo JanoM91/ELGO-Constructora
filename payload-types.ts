@@ -322,6 +322,18 @@ export interface FinOperacion {
   venceEl?: string | null;
   pagadoCon?: ('cuenta' | 'propio') | null;
   reembolsoA?: (number | null) | User;
+  categoriaPropuesta?: string | null;
+  actividadPropuesta?: string | null;
+  porRevisar?: boolean | null;
+  grupoTicket?: string | null;
+  calendario?:
+    | {
+        fecha?: string | null;
+        importe: number;
+        nota?: string | null;
+        id?: string | null;
+      }[]
+    | null;
   capturadoPor: number | User;
   origen?: ('manual' | 'voz' | 'importacion' | 'apertura') | null;
   anulada?: boolean | null;
@@ -606,6 +618,18 @@ export interface FinOperacionesSelect<T extends boolean = true> {
   venceEl?: T;
   pagadoCon?: T;
   reembolsoA?: T;
+  categoriaPropuesta?: T;
+  actividadPropuesta?: T;
+  porRevisar?: T;
+  grupoTicket?: T;
+  calendario?:
+    | T
+    | {
+        fecha?: T;
+        importe?: T;
+        nota?: T;
+        id?: T;
+      };
   capturadoPor?: T;
   origen?: T;
   anulada?: T;
@@ -716,6 +740,10 @@ export interface FinConfiguracion {
    * Desde aquí empieza a contar Finanzas. Lo anterior entra como saldos iniciales e inventario de apertura, nunca como entradas o gastos del periodo.
    */
   fechaCorte?: string | null;
+  /**
+   * Cuando alguien registra una entrada o un gasto con una categoría, obra o área que no existe, se les manda un correo para clasificarlo. Si lo dejas vacío, le llega a los superadministradores y a los roles que pueden «Corregir, clasificar y anular».
+   */
+  avisosClasificacion?: (number | User)[] | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -725,6 +753,7 @@ export interface FinConfiguracion {
  */
 export interface FinConfiguracionSelect<T extends boolean = true> {
   fechaCorte?: T;
+  avisosClasificacion?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

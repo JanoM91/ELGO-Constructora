@@ -26,6 +26,9 @@ import Captura from './Captura'
 import Detalle from './Detalle'
 import Fondos from './Fondos'
 import Mover from './Mover'
+import Plazos from './Plazos'
+import Revisar from './Revisar'
+import Ticket from './Ticket'
 import Voz from './Voz'
 import { Aviso, FinanzasCtx, Icono, iniciales } from './comun'
 import { Configuracion, Inicio, Movimientos, Obras, Pendientes, Saldos } from './Paginas'
@@ -48,6 +51,9 @@ export default function AppFinanzas({ catalogo, ruta, query, rutaAdmin, soloCapt
   let pantalla: React.ReactNode
   if (!seccion) pantalla = <Inicio />
   else if (seccion === 'registrar') pantalla = p.registrar ? <Captura key={`${query.tipo === 'entrada' ? 'entrada' : 'gasto'}-${query.cuenta ?? ''}`} tipoInicial={query.tipo === 'entrada' ? 'entrada' : 'gasto'} cuentaInicial={numero(query.cuenta)} /> : <Aviso tono="info">Tu rol no incluye registrar entradas y gastos.</Aviso>
+  else if (seccion === 'ticket') pantalla = <Ticket />
+  else if (seccion === 'plazos') pantalla = <Plazos />
+  else if (seccion === 'revisar') pantalla = <Revisar key={`${query.grupo ?? ''}-${query.op ?? ''}`} grupo={query.grupo || null} opId={numero(query.op)} />
   else if (seccion === 'voz') pantalla = p.registrar ? <Voz /> : <Aviso tono="info">Tu rol no incluye registrar entradas y gastos.</Aviso>
   else if (seccion === 'mover') pantalla = p.moverDinero ? <Mover key={`${query.tipo ?? ''}-${query.de ?? ''}-${query.a ?? ''}`} tipoInicial={query.tipo === 'aportacion' || query.tipo === 'retiro' ? query.tipo : 'traspaso'} deInicial={numero(query.de)} aInicial={numero(query.a)} /> : <Aviso tono="info">Tu rol no incluye mover dinero entre cuentas.</Aviso>
   else if (seccion === 'fondos') pantalla = p.moverDinero || p.verSaldos || p.liquidar ? <Fondos /> : <Aviso tono="info">Tu rol no incluye ver los fondos del equipo.</Aviso>
@@ -71,7 +77,7 @@ export default function AppFinanzas({ catalogo, ruta, query, rutaAdmin, soloCapt
     ['configuracion', 'Configuración', 'ajustes', p.configurar || p.gestionarUsuarios],
   ]
   const visibles = pestanas.filter((x) => x[3])
-  const activa = (k: string) => (seccion ?? '') === k || (k === 'movimientos' && seccion === 'operacion') || (k === 'registrar' && seccion === 'voz')
+  const activa = (k: string) => (seccion ?? '') === k || (k === 'movimientos' && seccion === 'operacion') || (k === 'registrar' && (seccion === 'voz' || seccion === 'ticket' || seccion === 'plazos')) || (k === 'pendientes' && seccion === 'revisar')
   const quien = `${catalogo.usuario.nombre} · ${p.rolNombre}`
 
   return (

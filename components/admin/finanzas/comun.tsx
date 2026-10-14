@@ -83,9 +83,9 @@ export const api = {
     const r = await fetch(`/api/finanzas/${ruta}`, { method: 'POST', credentials: 'same-origin', headers: { 'Idempotency-Key': clave }, body: form })
     return leer<T>(r)
   },
-  /** Un formulario multipart ya armado (la nota de voz manda «audio» o «texto»). */
-  async formulario<T>(ruta: string, form: FormData): Promise<T> {
-    const r = await fetch(`/api/finanzas/${ruta}`, { method: 'POST', credentials: 'same-origin', body: form })
+  /** Un formulario multipart ya armado (la foto de ticket). Con `clave`, reintentar no duplica. */
+  async formulario<T>(ruta: string, form: FormData, clave?: string): Promise<T> {
+    const r = await fetch(`/api/finanzas/${ruta}`, { method: 'POST', credentials: 'same-origin', headers: clave ? { 'Idempotency-Key': clave } : undefined, body: form })
     return leer<T>(r)
   },
 }
@@ -118,6 +118,8 @@ const TRAZOS: Record<string, React.ReactNode> = {
   lista: <path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />,
   bandeja: (<><path d="M3 13.5h5l1.5 2.5h5l1.5-2.5h5" /><path d="M5.5 5h13l2.5 8.5V19H3v-5.5z" /></>),
   mas: <path d="M12 5v14M5 12h14" />,
+  ticket: (<><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z" /><path d="M9 8h6M9 12h6M9 16h3" /></>),
+  calendario: (<><rect x="4" y="5.5" width="16" height="14.5" rx="2" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4M8 14h2M12 14h2M8 17h2" /></>),
   obra: (<><path d="M3 20h18M5 20V10l5-3v13M10 20V5l9 5v10" /><path d="M13 13h3M13 16h3" /></>),
   cartera: (<><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9.5a1.5 1.5 0 0 1-1.5 1.5H4z" /><path d="M4 7.5V6a2 2 0 0 1 2-2h10" /></>),
   ajustes: (<><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>),
@@ -202,9 +204,14 @@ export function pastillasDe(op: OperacionVista): React.ReactNode[] {
   if (op.pendienteCentavos > 0 && op.pagadoCon === 'propio') out.push(<Pastilla key="p" tono="aviso">Por reembolsar {fmt(op.pendienteCentavos)}{op.reembolsoA ? ` a ${op.reembolsoA.nombre.split(' ')[0]}` : ''}</Pastilla>)
   else if (op.pendienteCentavos > 0) out.push(<Pastilla key="p" tono="aviso">{op.tipo === 'entrada' ? 'Por cobrar' : 'Por pagar'} {fmt(op.pendienteCentavos)}</Pastilla>)
   if (!op.anulada && esInterno(op.tipo)) out.push(<Pastilla key="i" tono="gris">{NOMBRE_INTERNO[op.tipo]}</Pastilla>)
-  if (!op.anulada && !esInterno(op.tipo) && op.clasificacion === 'pendiente') out.push(<Pastilla key="c" tono="aviso">Sin clasificar</Pastilla>)
+  if (!op.anulada && !esInterno(op.tipo) && op.clasificacion === 'pendiente') out.push(<Pastilla key="c" tono="aviso">{op.categoriaPropuesta || op.actividadPropuesta ? 'Propuesta por revisar' : 'Sin clasificar'}</Pastilla>)
   if (!op.anulada && !esInterno(op.tipo) && op.evidencia === 'pendiente') out.push(<Pastilla key="e" tono="gris">Sin comprobante</Pastilla>)
   if (op.evidencia === 'por_revisar') out.push(<Pastilla key="r" tono="info">Comprobante por revisar</Pastilla>)
+  if (op.porRevisar) out.push(<Pastilla key="pc" tono="aviso">{op.grupoTicket ? 'Ticket por completar' : 'Por completar'}</Pastilla>)
+  if (!op.anulada && op.calendario && op.pendienteCentavos > 0) {
+    const px = op.calendario.proxima
+    out.push(<Pastilla key="pl" tono={op.calendario.vencidas ? 'malo' : 'info'}>{op.calendario.vencidas ? `${op.calendario.vencidas} pago${op.calendario.vencidas === 1 ? '' : 's'} vencido${op.calendario.vencidas === 1 ? '' : 's'}` : px ? `Próximo pago ${px.fecha ? fecha(px.fecha) : 'sin fecha'} · ${fmt(px.faltaCentavos)}` : 'Plan de pagos'}</Pastilla>)
+  }
   return out
 }
 
@@ -224,7 +231,8 @@ export function subtituloDe(op: OperacionVista): string {
   if (op.tipo === 'traspaso') return op.traspaso ? `${op.traspaso.de} → ${op.traspaso.a}` : 'Traspaso'
   if (op.tipo === 'aportacion' || op.tipo === 'retiro') return [NOMBRE_INTERNO[op.tipo], op.contraparte, op.cuentas.join(', ')].filter(Boolean).join(' · ')
   const pagado = op.pagadoCon === 'propio' ? `Pagó ${op.reembolsoA?.nombre.split(' ')[0] ?? 'alguien'} de su bolsa` : op.cuentas.join(', ')
-  return [op.categoria?.nombre ?? 'Sin clasificar', pagado, op.actividad?.nombre ?? ''].filter(Boolean).join(' · ')
+  const categoria = op.categoria?.nombre ?? (op.categoriaPropuesta ? `Propuso «${op.categoriaPropuesta}»` : 'Sin clasificar')
+  return [categoria, pagado, op.actividad?.nombre ?? (op.actividadPropuesta ? `obra propuesta «${op.actividadPropuesta}»` : '')].filter(Boolean).join(' · ')
 }
 
 export function FilaOperacion({ op }: { op: OperacionVista }) {

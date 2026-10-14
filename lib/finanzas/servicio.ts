@@ -33,20 +33,25 @@ import { get as blobGet, put as blobPut } from '@vercel/blob'
 import { z } from 'zod'
 
 import type { FinCategoria, FinComprobante, FinCuenta, FinMovimiento, FinOperacion, User } from '../../payload-types'
+import { notifyFinanzasRevision } from '../notify'
 import { permisosDe, type Permisos } from '../permisos'
 import { site } from '../site'
 import {
   aCentavos,
   aPesos,
+  coincidenciaDeNombre,
   conceptoInterno,
   diaEnZona,
   esFechaValida,
+  estadoCalendario,
   estadoDePago,
   formatoMXN,
   resumenDeFondo,
   revisarFechaReal,
+  revisarPlan,
   saldoDeCuenta,
   sumarDias,
+  textoPropuesta,
   tieneDosDecimalesOMenos,
 } from './reglas'
 import type {
@@ -64,6 +69,7 @@ import type {
   PersonaBreve,
   PersonaConSesiones,
   ResultadoObras,
+  ResultadoTicket,
   FilaObra,
   Resumen,
   Saldos,
@@ -222,6 +228,10 @@ async function armarVistas(ctx: Ctx, ops: FinOperacion[]): Promise<OperacionVist
     const nombreDe = (m: { cuenta?: unknown } | undefined) => (m ? nombreCuenta.get(idDe(m.cuenta) ?? 0) ?? '' : '')
     const traspaso = op.tipo === 'traspaso' ? { de: nombreDe(mios.find((m) => m.direccion === 'sale')), a: nombreDe(mios.find((m) => m.direccion === 'entra')) } : null
     const { estado, pendienteCentavos } = estadoDePago(total, pagado, Boolean(op.anulada))
+    /* Un plan de pagos muestra cómo va cada pago pactado; su «vence» es el del siguiente pago con saldo (MacAuto docs/68). */
+    const calendario = (op.calendario ?? []).length
+      ? estadoCalendario((op.calendario ?? []).map((c) => ({ fecha: c.fecha || null, centavos: aCentavos(c.importe), nota: c.nota || '' })), pagado, ctx.hoy)
+      : null
     const ev = comps.docs.filter((c) => idDe(c.operacion) === op.id)
     const cat = typeof op.categoria === 'object' && op.categoria ? op.categoria : null
     const act = typeof op.actividad === 'object' && op.actividad ? op.actividad : null
@@ -237,7 +247,7 @@ async function armarVistas(ctx: Ctx, ops: FinOperacion[]): Promise<OperacionVist
       asignacion: op.asignacion,
       contraparte: op.contraparte || '',
       notas: op.notas || '',
-      venceEl: op.venceEl || null,
+      venceEl: calendario ? (op.anulada || pendienteCentavos === 0 ? null : calendario.proxima?.fecha ?? null) : op.venceEl || null,
       capturadoPor: nombreUsuario(op.capturadoPor),
       capturadoEn: op.createdAt,
       origen: op.origen || 'manual',
@@ -252,6 +262,11 @@ async function armarVistas(ctx: Ctx, ops: FinOperacion[]): Promise<OperacionVist
       pagadoCon: op.pagadoCon === 'propio' ? 'propio' : 'cuenta',
       reembolsoA: op.reembolsoA ? nombreUsuario(op.reembolsoA) : null,
       traspaso,
+      categoriaPropuesta: op.categoriaPropuesta || '',
+      actividadPropuesta: op.actividadPropuesta || '',
+      porRevisar: Boolean(op.porRevisar) && !op.anulada,
+      grupoTicket: op.grupoTicket || '',
+      calendario,
     }
   })
 }
@@ -328,6 +343,9 @@ export const EsquemaRegistro = z.object({
   categoria: idEntrada.nullish(),
   asignacion: z.enum(['actividad', 'general', 'pendiente']),
   actividad: idEntrada.nullish(),
+  /* MacAuto docs/63: no encontró la categoría o la obra/área y escribió una. */
+  categoriaPropuesta: z.string().max(120).nullish(),
+  actividadPropuesta: z.string().max(120).nullish(),
   contraparte: z.string().max(160).nullish(),
   notas: z.string().max(2000).nullish(),
   venceEl: z.string().nullish(),
@@ -373,7 +391,37 @@ async function validarClasificacion(
   return { categoria, asignacion: d.asignacion, actividad }
 }
 
-export async function registrar(ctx: Ctx, entrada: unknown, clave: string | null): Promise<{ operacion: OperacionVista; duplicado: boolean }> {
+/** Busca si una propuesta ya existe (sin acentos ni mayúsculas). Devuelve el id existente o la propuesta limpia (MacAuto docs/63). */
+async function resolverPropuestas(ctx: Ctx, tipo: 'entrada' | 'gasto', d: { categoria?: number | null; categoriaPropuesta?: string | null; asignacion: 'actividad' | 'general' | 'pendiente'; actividad?: number | null; actividadPropuesta?: string | null }) {
+  let categoriaId = d.categoria ?? null
+  let categoriaPropuesta = categoriaId ? '' : textoPropuesta(d.categoriaPropuesta)
+  if (categoriaPropuesta) {
+    const r = await ctx.payload.find({ collection: 'fin-categorias', where: { and: [{ tipo: { equals: tipo } }, { activa: { equals: true } }] }, depth: 0, pagination: false, overrideAccess: true, select: { nombre: true, restringida: true } })
+    const igual = coincidenciaDeNombre(categoriaPropuesta, r.docs.filter((c) => !c.restringida || ctx.p.fin.verRestringidas))
+    if (igual) {
+      categoriaId = igual.id
+      categoriaPropuesta = ''
+    }
+  }
+  let asignacion = d.asignacion
+  let actividadId = d.actividad ?? null
+  let actividadPropuesta = asignacion === 'pendiente' ? textoPropuesta(d.actividadPropuesta) : ''
+  if (actividadPropuesta) {
+    const r = await ctx.payload.find({ collection: 'fin-actividades', where: { activa: { equals: true } }, depth: 0, pagination: false, overrideAccess: true, select: { nombre: true } })
+    const igual = coincidenciaDeNombre(actividadPropuesta, r.docs)
+    if (igual) {
+      asignacion = 'actividad'
+      actividadId = igual.id
+      actividadPropuesta = ''
+    }
+  }
+  return { categoriaId, categoriaPropuesta, asignacion, actividadId, actividadPropuesta }
+}
+
+/** Lo que hay que avisar por correo después de guardar (MacAuto docs/63). Lo manda la ruta con `after()`, sin hacer esperar a quien captura. */
+export type AvisoRevision = { operacion: OperacionVista; categoriaPropuesta: string; actividadPropuesta: string }
+
+export async function registrar(ctx: Ctx, entrada: unknown, clave: string | null): Promise<{ operacion: OperacionVista; duplicado: boolean; aviso?: AvisoRevision | null }> {
   if (!ctx.p.fin.registrar) throw prohibido('Tu rol no incluye registrar entradas y gastos.')
   if (clave) {
     const ya = await ctx.payload.find({ collection: 'fin-operaciones', where: { claveIdempotencia: { equals: clave } }, depth: 1, limit: 1, overrideAccess: true, populate: POPULAR })
@@ -387,7 +435,9 @@ export async function registrar(ctx: Ctx, entrada: unknown, clave: string | null
   const errorFecha = revisarFechaReal(d.fechaReal, ctx.hoy, await fechaCorte(ctx))
   if (errorFecha) throw invalido(errorFecha)
   if (d.venceEl && !esFechaValida(d.venceEl)) throw invalido('La fecha de vencimiento no es válida.')
-  const clas = await validarClasificacion(ctx, d.tipo, d)
+  /* Propuestas: si lo que escribió ya existe con otro acento o mayúsculas, se usa esa y no queda pendiente. */
+  const prop = await resolverPropuestas(ctx, d.tipo, d)
+  const clas = await validarClasificacion(ctx, d.tipo, { categoria: prop.categoriaId, asignacion: prop.asignacion, actividad: prop.actividadId })
 
   const propio = d.pagadoCon === 'propio'
   let reembolsoA: number | null = null
@@ -428,6 +478,8 @@ export async function registrar(ctx: Ctx, entrada: unknown, clave: string | null
           categoria: clas.categoria?.id ?? null,
           actividad: clas.actividad,
           asignacion: clas.asignacion,
+          categoriaPropuesta: prop.categoriaPropuesta || null,
+          actividadPropuesta: prop.actividadPropuesta || null,
           contraparte: textoCorto(d.contraparte),
           notas: textoCorto(d.notas, 2000),
           venceEl: !propio && d.estado === 'pendiente' && d.venceEl ? d.venceEl : null,
@@ -448,10 +500,16 @@ export async function registrar(ctx: Ctx, entrada: unknown, clave: string | null
           },
         })
       }
-      await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: creada.id, accion: 'crear', usuario: ctx.user.id } })
+      const notas = [
+        prop.categoriaPropuesta && `Propuso la categoría «${prop.categoriaPropuesta}»`,
+        prop.actividadPropuesta && `Propuso la obra o área «${prop.actividadPropuesta}»`,
+      ].filter(Boolean).join(' · ')
+      await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: creada.id, accion: 'crear', valorNuevo: notas || null, usuario: ctx.user.id } })
       return creada.id
     })
-    return { operacion: (await armarVistas(ctx, [await cargarOperacion(ctx, op)]))[0], duplicado: false }
+    const operacion = (await armarVistas(ctx, [await cargarOperacion(ctx, op)]))[0]
+    const aviso: AvisoRevision | null = prop.categoriaPropuesta || prop.actividadPropuesta ? { operacion, categoriaPropuesta: prop.categoriaPropuesta, actividadPropuesta: prop.actividadPropuesta } : null
+    return { operacion, duplicado: false, aviso }
   } catch (e) {
     /* Dos guardados con la misma clave al mismo tiempo: la base rechaza el
        segundo y devolvemos el primero. */
@@ -555,6 +613,9 @@ export async function detalle(ctx: Ctx, id: number): Promise<DetalleOperacion> {
       adjuntar: !vista.anulada && (propia || ctx.p.fin.corregir),
       revisar: ctx.p.fin.revisarComprobantes,
       corregir: ctx.p.fin.corregir && !vista.anulada,
+      /* Completar (concepto, importe, categoría, obra) lo puede quien lo capturó mientras siga «por revisar», o quien corrige. */
+      completar: !vista.anulada && (vista.tipo === 'entrada' || vista.tipo === 'gasto') && (ctx.p.fin.corregir || (propia && vista.porRevisar && ctx.p.fin.registrar)),
+      descartar: !vista.anulada && propia && vista.porRevisar && !ctx.p.fin.corregir,
     },
   }
 }
@@ -585,6 +646,7 @@ export async function listar(ctx: Ctx, f: FiltrosLista): Promise<ListaOperacione
   if (f.estado === 'sin_clasificar') filas = filas.filter((x) => !x.anulada && x.clasificacion === 'pendiente')
   if (f.estado === 'anuladas') filas = filas.filter((x) => x.anulada)
   if (f.estado === 'por_reembolsar') filas = filas.filter((x) => x.pagadoCon === 'propio' && x.pendienteCentavos > 0)
+  if (f.estado === 'por_completar') filas = filas.filter((x) => x.porRevisar)
   const vigentes = filas.filter((x) => !x.anulada)
   return {
     filas,
@@ -607,9 +669,12 @@ export async function pendientes(ctx: Ctx): Promise<Pendientes> {
     /* Un traspaso entre cuentas propias no lleva comprobante; aportaciones y retiros tampoco se exigen aquí. */
     sinComprobante: filas.filter((x) => x.evidencia === 'pendiente' && !INTERNOS.has(x.tipo)),
     porRevisar: ctx.p.fin.revisarComprobantes ? filas.filter((x) => x.evidencia === 'por_revisar') : [],
-    sinClasificar: ctx.p.fin.corregir ? filas.filter((x) => x.clasificacion === 'pendiente') : [],
-    porCobrarOPagar: filas.filter((x) => x.pendienteCentavos > 0 && x.pagadoCon !== 'propio'),
+    /* Lo que todavía está en manos de quien lo capturó (ticket o plan por completar) no le llega aún a administración. */
+    sinClasificar: ctx.p.fin.corregir ? filas.filter((x) => x.clasificacion === 'pendiente' && !x.porRevisar) : [],
+    /* Primero lo que vence antes; lo que no tiene fecha, al final. */
+    porCobrarOPagar: filas.filter((x) => x.pendienteCentavos > 0 && x.pagadoCon !== 'propio').sort((a, b) => (a.venceEl ?? '9999').localeCompare(b.venceEl ?? '9999')),
     porReembolsar: filas.filter((x) => x.pendienteCentavos > 0 && x.pagadoCon === 'propio'),
+    porCompletar: filas.filter((x) => x.porRevisar && (x.capturadoPor.id === ctx.user.id || ctx.p.fin.corregir)),
   }
 }
 
@@ -648,7 +713,7 @@ export async function resumen(ctx: Ctx): Promise<Resumen> {
   const f = ctx.p.superadmin || ctx.p.fin.verSaldos || ctx.p.fin.moverDinero || ctx.p.fin.liquidar ? await fondos(ctx) : null
   const mio = f ? f.fondos.find((x) => x.cuenta.responsable?.id === ctx.user.id) ?? null : await miFondo(ctx)
   return {
-    conteos: { sinComprobante: p.sinComprobante.length, porRevisar: p.porRevisar.length, sinClasificar: p.sinClasificar.length, porCobrarOPagar: p.porCobrarOPagar.length, porReembolsar: p.porReembolsar.length },
+    conteos: { sinComprobante: p.sinComprobante.length, porRevisar: p.porRevisar.length, sinClasificar: p.sinClasificar.length, porCobrarOPagar: p.porCobrarOPagar.length, porReembolsar: p.porReembolsar.length, porCompletar: p.porCompletar.filter((x) => x.capturadoPor.id === ctx.user.id).length },
     ultimos: lista.filas.slice(0, 6),
     saldoTotalCentavos: total,
     configurado: { roles: conteos[0].totalDocs > 0, catalogos: conteos[1].totalDocs > 0, cuentas: conteos[2].totalDocs > 0, fechaCorte: Boolean(conteos[3]) },
@@ -853,6 +918,352 @@ export async function moverDinero(ctx: Ctx, entrada: unknown, clave: string | nu
   }
 }
 
+/* ───────────────────────────── avisos por correo (MacAuto docs/63) ───────────────────────────── */
+
+/**
+ * A quién se avisa: lo elegido en Finanzas → Configuración; si no hay nadie,
+ * superadministradores y los roles que pueden clasificar. Nunca a quien
+ * acaba de capturar (ya lo sabe).
+ */
+async function correosDeAviso(ctx: Ctx): Promise<string[]> {
+  const g = await ctx.payload.findGlobal({ slug: 'fin-configuracion', depth: 0, overrideAccess: true })
+  const ids = Array.isArray(g?.avisosClasificacion) ? g.avisosClasificacion.map(idDe).filter((x): x is number => x != null) : []
+  let where: Where
+  if (ids.length) where = { id: { in: ids } }
+  else {
+    const roles = await ctx.payload.find({ collection: 'roles', where: { 'finanzas.corregir': { equals: true } }, depth: 0, pagination: false, overrideAccess: true, select: { nombre: true } })
+    const o: Where[] = [{ esSuperadmin: { equals: true } }]
+    if (roles.docs.length) o.push({ rolDeAcceso: { in: roles.docs.map((x) => x.id) } })
+    where = { or: o }
+  }
+  const u = await ctx.payload.find({ collection: 'users', where, depth: 0, pagination: false, overrideAccess: true, select: { email: true } })
+  return u.docs.filter((x) => x.id !== ctx.user.id).map((x) => x.email).filter(Boolean)
+}
+
+/** Manda el aviso de un registro con propuestas. Corre después de responder (la ruta usa `after()`); si falla, solo queda en el registro del servidor. */
+export async function avisarRevision(ctx: Ctx, aviso: AvisoRevision): Promise<void> {
+  try {
+    const to = await correosDeAviso(ctx)
+    const op = aviso.operacion
+    if (!to.length) {
+      ctx.payload.logger.warn(`[finanzas] ${op.folio} necesita revisión pero no hay a quién avisar por correo`)
+      return
+    }
+    ctx.payload.logger.info(`[finanzas] aviso de revisión de ${op.folio} a ${to.length} persona(s)`)
+    await notifyFinanzasRevision({
+      to, folio: op.folio, tipo: op.tipo as 'entrada' | 'gasto', importe: formatoMXN(op.totalCentavos, true), concepto: op.concepto,
+      capturadoPor: op.capturadoPor.nombre, fecha: op.fechaReal, ligaOperacion: `${site.url}/admin/finanzas/operacion/${op.id}`,
+      categoriaPropuesta: aviso.categoriaPropuesta || null, actividadPropuesta: aviso.actividadPropuesta || null,
+    })
+  } catch (e) {
+    console.error('[finanzas] falló el aviso de revisión:', e)
+  }
+}
+
+/* ───────────────────────────── completar lo capturado (MacAuto docs/68) ───────────────────────────── */
+
+const EsquemaCompletar = z.object({
+  concepto: z.string().trim().min(1, 'Escribe un concepto breve.').max(160).optional(),
+  importe: importeEntrada.optional(),
+  categoria: idEntrada.nullish(),
+  categoriaPropuesta: z.string().max(120).nullish(),
+  asignacion: z.enum(['actividad', 'general', 'pendiente']),
+  actividad: idEntrada.nullish(),
+  actividadPropuesta: z.string().max(120).nullish(),
+  /* true = «ya lo revisé»: deja de estar en «Por completar». */
+  listo: z.boolean().default(true),
+})
+
+/**
+ * Quien capturó un ticket o un plan lo completa con calma: concepto, importe
+ * (si la foto se leyó mal), categoría (o una propuesta) y obra (o una
+ * propuesta). Lo puede hacer sin «Corregir, clasificar y anular» mientras el
+ * registro siga «por revisar»; quien corrige, siempre. Cada cambio queda en la
+ * bitácora.
+ */
+export async function completarOperacion(ctx: Ctx, id: number, entrada: unknown): Promise<{ aviso: AvisoRevision | null }> {
+  const parsed = EsquemaCompletar.safeParse(entrada)
+  if (!parsed.success) throw invalido(parsed.error.issues[0]?.message || 'Datos incompletos.')
+  const d = parsed.data
+  const op = await cargarOperacion(ctx, id)
+  const propia = idDe(op.capturadoPor) === ctx.user.id
+  if (!(ctx.p.fin.corregir || (propia && op.porRevisar && ctx.p.fin.registrar))) throw prohibido('Este registro ya se revisó. Los cambios ahora los hace un rol con «Corregir, clasificar y anular».')
+  if (op.anulada) throw invalido('El registro está anulado.')
+  if (op.tipo !== 'entrada' && op.tipo !== 'gasto') throw invalido('Este tipo de operación no se completa aquí.')
+  const tipo = op.tipo
+  const movs = (await ctx.payload.find({ collection: 'fin-movimientos', where: { and: [{ operacion: { equals: id } }, { anulado: { not_equals: true } }] }, depth: 0, pagination: false, overrideAccess: true })).docs
+  const actual = aCentavos(op.importeTotal)
+  let total = actual
+  if (d.importe !== undefined) {
+    total = aCentavos(d.importe)
+    if (!Number.isInteger(total) || total <= 0) throw invalido('Escribe un importe mayor a cero, con a lo más dos decimales.')
+    if (total !== actual) {
+      if ((op.calendario ?? []).length) throw invalido('El importe de un plan de pagos no se cambia aquí: anúlalo y vuelve a registrarlo.')
+      if (movs.length > 1) throw invalido('Ya tiene varios cobros o pagos: pide a administración que lo corrija.')
+    }
+  }
+  const prop = await resolverPropuestas(ctx, tipo, d)
+  const clas = await validarClasificacion(ctx, tipo, { categoria: prop.categoriaId, asignacion: prop.asignacion, actividad: prop.actividadId })
+  const concepto = d.concepto ?? op.concepto
+  const antesCat = typeof op.categoria === 'object' && op.categoria ? op.categoria.nombre : op.categoriaPropuesta ? `Sin clasificar (propuso «${op.categoriaPropuesta}»)` : 'Sin clasificar'
+  const motivo = propia && !ctx.p.fin.corregir ? 'Revisión de quien lo capturó' : 'Revisión'
+  await enTransaccion(ctx, async (req) => {
+    await ctx.payload.update({
+      collection: 'fin-operaciones', id, req, overrideAccess: true,
+      data: {
+        concepto,
+        importeTotal: aPesos(total),
+        categoria: clas.categoria?.id ?? null,
+        actividad: clas.actividad,
+        asignacion: clas.asignacion,
+        categoriaPropuesta: prop.categoriaPropuesta || null,
+        actividadPropuesta: prop.actividadPropuesta || null,
+        porRevisar: d.listo ? false : Boolean(op.porRevisar),
+      },
+    })
+    if (total !== actual && movs.length === 1) await ctx.payload.update({ collection: 'fin-movimientos', id: movs[0].id, req, overrideAccess: true, data: { importe: aPesos(total) } })
+    const bit = (campo: string, antes: string, despues: string, accion: 'corregir' | 'clasificar' = 'corregir') =>
+      ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion, campo, valorAnterior: antes, valorNuevo: despues, motivo, usuario: ctx.user.id } })
+    if (concepto !== op.concepto) await bit('Concepto', op.concepto, concepto)
+    if (total !== actual) await bit('Importe', formatoMXN(actual, true), formatoMXN(total, true))
+    const despuesCat = clas.categoria?.nombre ?? (prop.categoriaPropuesta ? `Sin clasificar (propuso «${prop.categoriaPropuesta}»)` : 'Sin clasificar')
+    let asigTxt = clas.asignacion === 'general' ? 'general' : 'pendiente de asignar'
+    if (clas.asignacion === 'actividad' && clas.actividad) {
+      const a = await ctx.payload.findByID({ collection: 'fin-actividades', id: clas.actividad, depth: 0, overrideAccess: true, req }).catch(() => null)
+      asigTxt = a?.nombre ?? 'obra o área'
+    } else if (prop.actividadPropuesta) asigTxt = `propuso «${prop.actividadPropuesta}»`
+    await bit('Clasificación', antesCat, `${despuesCat} · ${asigTxt}`, 'clasificar')
+  })
+  const nuevaPropuesta = (prop.categoriaPropuesta && prop.categoriaPropuesta !== (op.categoriaPropuesta || '')) || (prop.actividadPropuesta && prop.actividadPropuesta !== (op.actividadPropuesta || ''))
+  if (!nuevaPropuesta) return { aviso: null }
+  const operacion = (await armarVistas(ctx, [await cargarOperacion(ctx, id)]))[0]
+  return { aviso: { operacion, categoriaPropuesta: prop.categoriaPropuesta, actividadPropuesta: prop.actividadPropuesta } }
+}
+
+/** Quien capturó un registro «por revisar» lo puede descartar (se anula con motivo; nada se borra). Ejemplo: la foto leyó un renglón que no era un concepto. */
+export async function descartarPropia(ctx: Ctx, id: number, entrada: unknown): Promise<void> {
+  const motivo = z.object({ motivo: z.string().trim().min(5, 'Escribe por qué lo descartas (mínimo 5 caracteres).').max(300) }).safeParse(entrada)
+  if (!motivo.success) throw invalido(motivo.error.issues[0]?.message || 'Escribe el motivo.')
+  const op = await cargarOperacion(ctx, id)
+  if (op.anulada) return
+  const propia = idDe(op.capturadoPor) === ctx.user.id
+  if (!(ctx.p.fin.corregir || (propia && op.porRevisar))) throw prohibido('Solo se descarta lo que tú capturaste y todavía está por revisar.')
+  await anularInterno(ctx, id, `Descartado al revisar: ${motivo.data.motivo}`)
+}
+
+/** Lo que quien consulta tiene por completar; con `grupo`, solo ese ticket. */
+export async function porCompletar(ctx: Ctx, grupo: string | null): Promise<OperacionVista[]> {
+  const y: Where[] = [await filtroVisible(ctx), { anulada: { not_equals: true } }]
+  if (grupo) y.push({ grupoTicket: { equals: textoCorto(grupo, 40) } })
+  else y.push({ porRevisar: { equals: true } })
+  if (!ctx.p.fin.corregir) y.push({ capturadoPor: { equals: ctx.user.id } })
+  const r = await ctx.payload.find({ collection: 'fin-operaciones', where: { and: y }, depth: 1, limit: 200, sort: 'id', overrideAccess: true, populate: POPULAR })
+  return armarVistas(ctx, r.docs)
+}
+
+/* ───────────────────────────── foto de ticket (MacAuto docs/68) ───────────────────────────── */
+
+export type DatosTicket = { tipo: 'entrada' | 'gasto'; estado: 'realizado' | 'pendiente' | 'propio'; cuenta: number | null; medio: 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'deposito' | null }
+export const EsquemaDatosTicket = z.object({
+  tipo: z.enum(['entrada', 'gasto']),
+  estado: z.enum(['realizado', 'pendiente', 'propio']),
+  cuenta: idEntrada.nullish().transform((x) => x ?? null),
+  medio: z.enum(['efectivo', 'transferencia', 'tarjeta', 'cheque', 'deposito']).nullish().transform((x) => x ?? null),
+})
+
+/** Revisa tipo, estado y cuenta ANTES de leer la foto: así no se gasta una lectura en algo que no se podrá guardar. */
+export async function validarDatosTicket(ctx: Ctx, d: DatosTicket): Promise<FinCuenta | null> {
+  if (!ctx.p.fin.registrar) throw prohibido('Tu rol no incluye registrar entradas y gastos.')
+  if (d.estado === 'propio' && d.tipo !== 'gasto') throw invalido('«De mi bolsa» solo aplica a gastos.')
+  if (d.estado !== 'realizado') return null
+  if (!d.cuenta) throw invalido(d.tipo === 'entrada' ? 'Elige a qué cuenta o caja entró.' : 'Elige de qué cuenta o caja salió.')
+  let cuenta: FinCuenta
+  try {
+    cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id: d.cuenta, depth: 0, overrideAccess: true })
+  } catch {
+    throw invalido('La cuenta no existe.')
+  }
+  if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
+  return cuenta
+}
+
+/** ¿Ya se guardó este ticket (mismo reintento)? */
+export async function ticketYaGuardado(ctx: Ctx, clave: string | null): Promise<ResultadoTicket | null> {
+  if (!clave) return null
+  const ya = await ctx.payload.find({ collection: 'fin-operaciones', where: { claveIdempotencia: { equals: `${clave}-1` } }, depth: 0, limit: 1, overrideAccess: true, select: { grupoTicket: true, contraparte: true } })
+  if (!ya.docs[0]?.grupoTicket) return null
+  const ops = await porCompletar(ctx, ya.docs[0].grupoTicket)
+  return { grupo: ya.docs[0].grupoTicket, comercio: ya.docs[0].contraparte || '', totalCentavos: ops.reduce((a, o) => a + o.totalCentavos, 0), operaciones: ops, dudas: [], duplicado: true }
+}
+
+/** Sube un archivo al almacén PRIVADO de comprobantes. null si el almacén no está configurado (el registro se guarda igual). */
+export async function subirPrivado(carpeta: string, archivo: File): Promise<{ ruta: string; nombre: string; tipo: string; tamano: number } | null> {
+  const token = process.env.FINANZAS_BLOB_READ_WRITE_TOKEN?.trim()
+  if (!token) return null
+  const tipo = archivo.type || 'image/jpeg'
+  const limpio = (archivo.name || 'ticket.jpg').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-80)
+  const subido = await blobPut(`finanzas/${carpeta}/${limpio}`, archivo, { access: 'private', token, addRandomSuffix: true, contentType: tipo })
+  return { ruta: subido.pathname, nombre: archivo.name || limpio, tipo, tamano: archivo.size }
+}
+
+/**
+ * Guarda UN registro por concepto del ticket, todos juntos (una transacción),
+ * con la misma foto como comprobante, «por revisar» para quien lo capturó y
+ * con el mismo `grupoTicket`. Cada uno descuenta de la cuenta su propio
+ * importe; la suma es el total del ticket. La obra se asigna al revisarlos.
+ */
+export async function guardarTicket(
+  ctx: Ctx,
+  d: DatosTicket,
+  cuenta: FinCuenta | null,
+  lectura: { comercio: string; fechaReal: string; renglones: { concepto: string; centavos: number; leidoCentavos: number; categoria: number | null }[]; totalCentavos: number },
+  archivo: { ruta: string; nombre: string; tipo: string; tamano: number } | null,
+  clave: string | null,
+): Promise<OperacionVista[]> {
+  const n = lectura.renglones.length
+  const ids = await enTransaccion(ctx, async (req) => {
+    const creadas: number[] = []
+    let grupo = ''
+    for (let i = 0; i < n; i++) {
+      const r = lectura.renglones[i]
+      let actividad: number | null = null
+      if (r.categoria) {
+        const c = await ctx.payload.findByID({ collection: 'fin-categorias', id: r.categoria, depth: 0, overrideAccess: true }).catch(() => null)
+        actividad = c ? idDe(c.actividadSugerida) : null
+      }
+      const ajuste = r.centavos !== r.leidoCentavos ? ` (en el ticket ${formatoMXN(r.leidoCentavos, true)}; se le sumó su parte de IVA, descuento o redondeo)` : ''
+      const creada = await ctx.payload.create({
+        collection: 'fin-operaciones', req, overrideAccess: true,
+        data: {
+          tipo: d.tipo, importeTotal: aPesos(r.centavos), fechaReal: lectura.fechaReal, concepto: r.concepto, categoria: r.categoria, actividad,
+          asignacion: 'pendiente', contraparte: textoCorto(lectura.comercio),
+          notas: `Foto de ticket${lectura.comercio ? ` de ${lectura.comercio}` : ''}: concepto ${i + 1} de ${n}${ajuste}. Total del ticket ${formatoMXN(lectura.totalCentavos, true)}.`,
+          pagadoCon: d.estado === 'propio' ? 'propio' : 'cuenta', reembolsoA: d.estado === 'propio' ? ctx.user.id : null,
+          capturadoPor: ctx.user.id, origen: 'manual', porRevisar: true, grupoTicket: grupo || null,
+          claveIdempotencia: clave ? `${clave}-${i + 1}` : null,
+        },
+      })
+      const folio = `FIN-${String(creada.id).padStart(6, '0')}`
+      if (!grupo) grupo = `TKT-${String(creada.id).padStart(6, '0')}`
+      await ctx.payload.update({ collection: 'fin-operaciones', id: creada.id, req, overrideAccess: true, data: { folio, grupoTicket: grupo } })
+      if (cuenta) {
+        await ctx.payload.create({
+          collection: 'fin-movimientos', req, overrideAccess: true,
+          data: { operacion: creada.id, cuenta: cuenta.id, direccion: d.tipo === 'entrada' ? 'entra' : 'sale', importe: aPesos(r.centavos), fechaReal: lectura.fechaReal, medio: d.medio || (cuenta.tipo === 'banco' ? 'transferencia' : 'efectivo'), modalidad: 'contado', capturadoPor: ctx.user.id },
+        })
+      }
+      if (archivo) {
+        await ctx.payload.create({ collection: 'fin-comprobantes', req, overrideAccess: true, data: { operacion: creada.id, ruta: archivo.ruta, nombreArchivo: archivo.nombre, tipoContenido: archivo.tipo, tamano: archivo.tamano, subidoPor: ctx.user.id } })
+      }
+      await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: creada.id, accion: 'crear', valorNuevo: `Desde foto de ticket ${grupo} (concepto ${i + 1} de ${n})`, usuario: ctx.user.id } })
+      creadas.push(creada.id)
+    }
+    return creadas
+  })
+  const r = await ctx.payload.find({ collection: 'fin-operaciones', where: { id: { in: ids } }, depth: 1, pagination: false, sort: 'id', overrideAccess: true, populate: POPULAR })
+  return armarVistas(ctx, r.docs)
+}
+
+/* ───────────────────────────── pagos parciales y a plazos (MacAuto docs/68) ───────────────────────────── */
+
+const EsquemaPlan = z.object({
+  tipo: z.enum(['entrada', 'gasto']),
+  total: importeEntrada,
+  concepto: z.string().trim().min(1, 'Escribe un concepto breve.').max(160),
+  contraparte: z.string().max(160).nullish(),
+  categoria: idEntrada.nullish(),
+  categoriaPropuesta: z.string().max(120).nullish(),
+  asignacion: z.enum(['actividad', 'general', 'pendiente']),
+  actividad: idEntrada.nullish(),
+  actividadPropuesta: z.string().max(120).nullish(),
+  cuotas: z.array(z.object({ fecha: z.string().nullish(), importe: importeEntrada, yaOcurrio: z.boolean(), nota: z.string().max(80).nullish() })).min(1, 'Agrega al menos un pago.').max(60),
+  cuenta: idEntrada.nullish(),
+  medio: z.enum(['efectivo', 'transferencia', 'tarjeta', 'cheque', 'deposito']).nullish(),
+  /* Lo que escribió o dictó la persona: queda en las notas para saber de dónde salió el plan. */
+  texto: z.string().max(1000).nullish(),
+})
+
+/**
+ * Un acuerdo con pagos parciales o a plazos: UNA operación por el total (cuenta
+ * una sola vez en el resultado de la obra) con su calendario de pagos
+ * pactados. Lo que ya se cobró o pagó al registrar entra como movimiento
+ * (anticipo); lo demás queda «por cobrar» o «por pagar», con la fecha del
+ * siguiente pago.
+ */
+export async function registrarPlan(ctx: Ctx, entrada: unknown, clave: string | null): Promise<{ operacion: OperacionVista; duplicado: boolean; aviso?: AvisoRevision | null }> {
+  if (!ctx.p.fin.registrar) throw prohibido('Tu rol no incluye registrar entradas y gastos.')
+  if (clave) {
+    const ya = await ctx.payload.find({ collection: 'fin-operaciones', where: { claveIdempotencia: { equals: clave } }, depth: 1, limit: 1, overrideAccess: true, populate: POPULAR })
+    if (ya.docs[0]) return { operacion: (await armarVistas(ctx, ya.docs))[0], duplicado: true }
+  }
+  const parsed = EsquemaPlan.safeParse(entrada)
+  if (!parsed.success) throw invalido(parsed.error.issues[0]?.message || 'Datos incompletos.')
+  const d = parsed.data
+  const total = aCentavos(d.total)
+  const corte = await fechaCorte(ctx)
+  const cuotas = d.cuotas.map((c) => ({ fecha: c.fecha && c.fecha.trim() ? c.fecha.trim() : null, centavos: aCentavos(c.importe), yaOcurrio: c.yaOcurrio, nota: textoCorto(c.nota, 80) }))
+  if (cuotas.some((c) => !Number.isInteger(c.centavos))) throw invalido('Revisa los importes: a lo más dos decimales.')
+  const errorPlan = revisarPlan(total, cuotas, ctx.hoy, corte)
+  if (errorPlan) throw invalido(errorPlan)
+  const hechas = cuotas.filter((c) => c.yaOcurrio)
+  let cuenta: FinCuenta | null = null
+  if (hechas.length) {
+    if (!d.cuenta) throw invalido(d.tipo === 'entrada' ? 'Elige a qué cuenta o caja entró lo que ya se cobró.' : 'Elige de qué cuenta o caja salió lo que ya se pagó.')
+    try {
+      cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id: d.cuenta, depth: 0, overrideAccess: true })
+    } catch {
+      throw invalido('La cuenta no existe.')
+    }
+    if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
+  }
+  const prop = await resolverPropuestas(ctx, d.tipo, d)
+  const clas = await validarClasificacion(ctx, d.tipo, { categoria: prop.categoriaId, asignacion: prop.asignacion, actividad: prop.actividadId })
+  const fechaReal = hechas.length ? hechas.map((c) => c.fecha as string).sort()[0] : ctx.hoy
+  const pendientesConFecha = cuotas.filter((c) => !c.yaOcurrio && c.fecha).map((c) => c.fecha as string).sort()
+  const clasificacionPendiente = !clas.categoria || clas.asignacion === 'pendiente'
+  const ordenadas = [...cuotas].sort((a, b) => (a.fecha ?? '9999').localeCompare(b.fecha ?? '9999'))
+  try {
+    const id = await enTransaccion(ctx, async (req) => {
+      const creada = await ctx.payload.create({
+        collection: 'fin-operaciones', req, overrideAccess: true,
+        data: {
+          tipo: d.tipo, importeTotal: aPesos(total), fechaReal, concepto: d.concepto,
+          categoria: clas.categoria?.id ?? null, actividad: clas.actividad, asignacion: clas.asignacion,
+          categoriaPropuesta: prop.categoriaPropuesta || null, actividadPropuesta: prop.actividadPropuesta || null,
+          contraparte: textoCorto(d.contraparte), notas: d.texto ? `Acuerdo: «${textoCorto(d.texto, 900)}»` : '',
+          venceEl: pendientesConFecha[0] ?? null, pagadoCon: 'cuenta', capturadoPor: ctx.user.id, origen: 'manual',
+          porRevisar: clasificacionPendiente,
+          calendario: ordenadas.map((c) => ({ fecha: c.fecha, importe: aPesos(c.centavos), nota: c.nota || null })),
+          claveIdempotencia: clave,
+        },
+      })
+      await ctx.payload.update({ collection: 'fin-operaciones', id: creada.id, req, overrideAccess: true, data: { folio: `FIN-${String(creada.id).padStart(6, '0')}` } })
+      for (const c of hechas) {
+        await ctx.payload.create({
+          collection: 'fin-movimientos', req, overrideAccess: true,
+          data: { operacion: creada.id, cuenta: (cuenta as FinCuenta).id, direccion: d.tipo === 'entrada' ? 'entra' : 'sale', importe: aPesos(c.centavos), fechaReal: c.fecha as string, medio: d.medio || ((cuenta as FinCuenta).tipo === 'banco' ? 'transferencia' : 'efectivo'), modalidad: 'anticipo', capturadoPor: ctx.user.id },
+        })
+      }
+      const notas = [
+        `Plan de ${cuotas.length} pago${cuotas.length === 1 ? '' : 's'}${hechas.length ? ` (${hechas.length} ya hecho${hechas.length === 1 ? '' : 's'})` : ''}`,
+        prop.categoriaPropuesta && `Propuso la categoría «${prop.categoriaPropuesta}»`,
+        prop.actividadPropuesta && `Propuso la obra o área «${prop.actividadPropuesta}»`,
+      ].filter(Boolean).join(' · ')
+      await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: creada.id, accion: 'crear', valorNuevo: notas, usuario: ctx.user.id } })
+      return creada.id
+    })
+    const operacion = (await armarVistas(ctx, [await cargarOperacion(ctx, id)]))[0]
+    const aviso: AvisoRevision | null = prop.categoriaPropuesta || prop.actividadPropuesta ? { operacion, categoriaPropuesta: prop.categoriaPropuesta, actividadPropuesta: prop.actividadPropuesta } : null
+    return { operacion, duplicado: false, aviso }
+  } catch (e) {
+    if (clave && esDuplicado(e)) {
+      const ya = await ctx.payload.find({ collection: 'fin-operaciones', where: { claveIdempotencia: { equals: clave } }, depth: 1, limit: 1, overrideAccess: true, populate: POPULAR })
+      if (ya.docs[0]) return { operacion: (await armarVistas(ctx, ya.docs))[0], duplicado: true }
+    }
+    throw e
+  }
+}
+
 /* ───────────────────────────── comprobantes (privados) ───────────────────────────── */
 
 const MAX_BYTES = 10 * 1024 * 1024
@@ -999,6 +1410,7 @@ export async function corregir(ctx: Ctx, id: number, entrada: unknown): Promise<
       nueva = clas.categoria
     }
     dataOp.categoria = nueva?.id ?? null
+    if (nueva) dataOp.categoriaPropuesta = null
     cambios.push({ campo: 'Categoría', antes: actualNombre, despues: nueva?.nombre ?? 'Sin clasificar' })
   }
   if (d.cuenta !== undefined) {
@@ -1026,26 +1438,81 @@ export async function corregir(ctx: Ctx, id: number, entrada: unknown): Promise<
 }
 
 const EsquemaClasificacion = z.object({
-  categoria: idEntrada,
+  categoria: idEntrada.nullish(),
   asignacion: z.enum(['actividad', 'general']),
   actividad: idEntrada.nullish(),
+  /* MacAuto docs/63: dar de alta la categoría o la obra/área que propuso quien capturó (solo con «Configurar»). */
+  crearCategoria: z.string().max(120).nullish(),
+  crearActividad: z.string().max(120).nullish(),
+  /* ELGO: lo nuevo que se da de alta, ¿es una obra o un área de soporte? */
+  tipoActividad: z.enum(['obra', 'area']).default('obra'),
 })
 
 export async function clasificar(ctx: Ctx, id: number, entrada: unknown): Promise<void> {
   if (!ctx.p.fin.corregir) throw prohibido('La clasificación la hacen los roles con «Corregir, clasificar y anular».')
   const parsed = EsquemaClasificacion.safeParse(entrada)
   if (!parsed.success) throw invalido(parsed.error.issues[0]?.message || 'Elige categoría y asignación.')
+  const d = parsed.data
   const op = await cargarOperacion(ctx, id)
   if (op.anulada) throw invalido('La operación está anulada.')
   if (op.tipo !== 'entrada' && op.tipo !== 'gasto') throw invalido('Este tipo de operación no se clasifica aquí.')
-  const clas = await validarClasificacion(ctx, op.tipo, parsed.data)
-  const antes = typeof op.categoria === 'object' && op.categoria ? op.categoria.nombre : 'Sin clasificar'
+  const tipo = op.tipo
+  let nuevaCat = d.categoria ? '' : textoPropuesta(d.crearCategoria)
+  let nuevaAct = d.asignacion === 'actividad' && !d.actividad ? textoPropuesta(d.crearActividad) : ''
+  if ((nuevaCat || nuevaAct) && !ctx.p.fin.configurar) throw prohibido('Dar de alta categorías, obras o áreas nuevas es de los roles con «Configurar cuentas, categorías…». Elige una existente.')
+  if (!d.categoria && !nuevaCat) throw invalido('Elige la categoría.')
+
+  /* Si el nombre ya existe (con otro acento o mayúsculas), se usa ese en vez de duplicarlo. */
+  let categoriaId = d.categoria ?? null
+  if (nuevaCat) {
+    const r = await ctx.payload.find({ collection: 'fin-categorias', where: { tipo: { equals: tipo } }, depth: 0, pagination: false, overrideAccess: true, select: { nombre: true, activa: true } })
+    const igual = coincidenciaDeNombre(nuevaCat, r.docs)
+    if (igual) {
+      if (!igual.activa) throw invalido(`Ya existe la categoría «${igual.nombre}», pero está desactivada. Actívala en Finanzas → Categorías o elige otra.`)
+      categoriaId = igual.id
+      nuevaCat = ''
+    }
+  }
+  let actividadId = d.actividad ?? null
+  if (nuevaAct) {
+    const r = await ctx.payload.find({ collection: 'fin-actividades', depth: 0, pagination: false, overrideAccess: true, select: { nombre: true, activa: true } })
+    const igual = coincidenciaDeNombre(nuevaAct, r.docs)
+    if (igual) {
+      if (!igual.activa) throw invalido(`Ya existe «${igual.nombre}», pero está desactivada (obra terminada). Actívala en Finanzas → Obras y áreas o elige otra.`)
+      actividadId = igual.id
+      nuevaAct = ''
+    }
+  }
+  /* Se valida todo lo que ya existe antes de crear nada. */
+  const clas = await validarClasificacion(ctx, tipo, { categoria: categoriaId, asignacion: nuevaAct ? 'general' : d.asignacion, actividad: actividadId })
+  const antes = typeof op.categoria === 'object' && op.categoria ? op.categoria.nombre : op.categoriaPropuesta ? `Sin clasificar (propuso «${op.categoriaPropuesta}»)` : 'Sin clasificar'
   await enTransaccion(ctx, async (req) => {
+    let actividadFinal = clas.actividad
+    if (nuevaAct) {
+      actividadFinal = (await ctx.payload.create({ collection: 'fin-actividades', req, overrideAccess: true, data: { nombre: nuevaAct, tipo: d.tipoActividad, activa: true } })).id
+      await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion: 'clasificar', campo: 'Catálogo', valorAnterior: '—', valorNuevo: `${d.tipoActividad === 'obra' ? 'Obra nueva' : 'Área nueva'} «${nuevaAct}»`, usuario: ctx.user.id } })
+    }
+    let categoriaFinal = clas.categoria
+    if (nuevaCat) {
+      categoriaFinal = await ctx.payload.create({
+        collection: 'fin-categorias', req, overrideAccess: true,
+        /* Una categoría nueva de obra no lleva área sugerida: al registrarla se elige la obra. */
+        data: { nombre: nuevaCat, tipo, restringida: false, actividadSugerida: d.asignacion === 'actividad' && d.tipoActividad === 'area' ? actividadFinal ?? null : null, activa: true },
+      })
+      await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion: 'clasificar', campo: 'Catálogo', valorAnterior: '—', valorNuevo: `Categoría nueva «${nuevaCat}»`, usuario: ctx.user.id } })
+    }
     await ctx.payload.update({
       collection: 'fin-operaciones', id, req, overrideAccess: true,
-      data: { categoria: clas.categoria?.id ?? null, asignacion: clas.asignacion, actividad: clas.actividad },
+      data: {
+        categoria: categoriaFinal?.id ?? null,
+        asignacion: d.asignacion,
+        actividad: d.asignacion === 'actividad' ? actividadFinal : (clas.actividad ?? idDe(categoriaFinal?.actividadSugerida)),
+        categoriaPropuesta: null,
+        actividadPropuesta: null,
+        porRevisar: false,
+      },
     })
-    await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion: 'clasificar', campo: 'Clasificación', valorAnterior: antes, valorNuevo: clas.categoria?.nombre ?? '', usuario: ctx.user.id } })
+    await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion: 'clasificar', campo: 'Clasificación', valorAnterior: antes, valorNuevo: categoriaFinal?.nombre ?? '', usuario: ctx.user.id } })
   })
 }
 
@@ -1055,10 +1522,14 @@ export async function anular(ctx: Ctx, id: number, entrada: unknown): Promise<vo
   if (!motivo.success) throw invalido(motivo.error.issues[0]?.message || 'Escribe el motivo.')
   const op = await cargarOperacion(ctx, id)
   if (op.anulada) return
+  await anularInterno(ctx, id, motivo.data.motivo)
+}
+
+async function anularInterno(ctx: Ctx, id: number, motivo: string): Promise<void> {
   await enTransaccion(ctx, async (req) => {
-    await ctx.payload.update({ collection: 'fin-operaciones', id, req, overrideAccess: true, data: { anulada: true, motivoAnulacion: motivo.data.motivo, anuladaPor: ctx.user.id, anuladaEn: new Date().toISOString() } })
+    await ctx.payload.update({ collection: 'fin-operaciones', id, req, overrideAccess: true, data: { anulada: true, motivoAnulacion: motivo, anuladaPor: ctx.user.id, anuladaEn: new Date().toISOString(), porRevisar: false } })
     await ctx.payload.update({ collection: 'fin-movimientos', where: { operacion: { equals: id } }, req, overrideAccess: true, data: { anulado: true } })
-    await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion: 'anular', motivo: motivo.data.motivo, usuario: ctx.user.id } })
+    await ctx.payload.create({ collection: 'fin-bitacora', req, overrideAccess: true, data: { operacion: id, accion: 'anular', motivo, usuario: ctx.user.id } })
   })
 }
 

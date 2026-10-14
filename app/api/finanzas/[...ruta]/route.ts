@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 
@@ -7,13 +7,17 @@ import {
   adjuntarComprobante,
   anular,
   arranque,
+  avisarRevision,
   catalogo,
   cerrarSesiones,
   clasificar,
+  completarOperacion,
   contextoDesdeHeaders,
   corregir,
+  descartarPropia,
   type Ctx,
   detalle,
+  EsquemaDatosTicket,
   equipo,
   ErrorFinanzas,
   fondos,
@@ -23,11 +27,14 @@ import {
   obras,
   pendientes,
   personasConSesiones,
+  porCompletar,
   registrar,
+  registrarPlan,
   resumen,
   revisarComprobante,
   saldos,
 } from '@/lib/finanzas/servicio'
+import { interpretarPlan, registrarTicket } from '@/lib/finanzas/lectura'
 import { notaDeVoz } from '@/lib/finanzas/voz'
 
 /**
@@ -59,14 +66,20 @@ import { notaDeVoz } from '@/lib/finanzas/voz'
  *   GET  equipo                        id y nombre de las personas del panel (para «quién pagó de su bolsa»)
  *   POST movimientos-internos          traspaso entre cuentas, aportación o retiro de socio
  *   POST voz                           texto dictado en el teléfono → borrador para el formulario (Claude)
+ *   POST ticket                        foto de ticket (multipart «foto», tipo, estado, cuenta, medio) → un registro por concepto
+ *   POST plazos/interpretar            texto del acuerdo → plan de pagos para confirmar (no guarda)
+ *   POST plazos                        guardar el plan confirmado
+ *   GET  por-completar?grupo=          tickets y planes por revisar de quien consulta (o un ticket)
+ *   POST operaciones/:id/completar     completar concepto, importe, categoría y obra (quien capturó, mientras esté por revisar)
+ *   POST operaciones/:id/descarte      descartar (anular) algo propio que está por revisar
  *
  * Los reintentos son seguros: los POST que crean algo aceptan el encabezado
  * `Idempotency-Key` y un segundo envío con la misma clave no duplica nada.
  */
 
 export const dynamic = 'force-dynamic'
-/* La nota de voz espera la respuesta de Claude: puede pasar de los 10 s de fábrica. */
-export const maxDuration = 30
+/* La nota de voz espera a Claude y leer la foto de un ticket puede tardar hasta 45 s: más que los 10 s de fábrica. */
+export const maxDuration = 60
 
 type Contexto = { params: Promise<{ ruta?: string[] }> }
 
@@ -124,9 +137,35 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
     if (a === 'personas' && !b) return json(await personasConSesiones(ctx))
     if (a === 'fondos' && !b) return json(await fondos(ctx))
     if (a === 'equipo' && !b) return json(await equipo(ctx))
+    if (a === 'por-completar' && !b) return json(await porCompletar(ctx, q.get('grupo')))
   } else {
     if (a === 'operaciones' && !b) {
-      const r = await registrar(ctx, await leerJson(req), clave)
+      const { aviso, ...r } = await registrar(ctx, await leerJson(req), clave)
+      /* Categoría u obra propuesta: el correo sale después de responder, para no hacer esperar a quien captura. */
+      if (aviso) after(() => avisarRevision(ctx, aviso))
+      return json(r, r.duplicado ? 200 : 201)
+    }
+    if (a === 'ticket' && !b) {
+      let form: FormData
+      try {
+        form = await req.formData()
+      } catch {
+        return json({ error: 'No llegó la foto.' }, 400)
+      }
+      const foto = form.get('foto')
+      if (!(foto instanceof File)) return json({ error: 'Toma la foto del ticket.' }, 400)
+      const datos = EsquemaDatosTicket.safeParse({ tipo: form.get('tipo'), estado: form.get('estado'), cuenta: form.get('cuenta') || null, medio: form.get('medio') || null })
+      if (!datos.success) return json({ error: 'Elige si es entrada o gasto y de dónde salió el dinero.' }, 400)
+      const r = await registrarTicket(ctx, datos.data, foto, clave)
+      return json(r, r.duplicado ? 200 : 201)
+    }
+    if (a === 'plazos' && b === 'interpretar' && !c) {
+      const cuerpo = (await leerJson(req)) as { texto?: unknown }
+      return json(await interpretarPlan(ctx, { texto: typeof cuerpo?.texto === 'string' ? cuerpo.texto : '' }))
+    }
+    if (a === 'plazos' && !b) {
+      const { aviso, ...r } = await registrarPlan(ctx, await leerJson(req), clave)
+      if (aviso) after(() => avisarRevision(ctx, aviso))
       return json(r, r.duplicado ? 200 : 201)
     }
     if (a === 'operaciones' && b) {
@@ -135,6 +174,12 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
       if (c === 'correccion') return json((await corregir(ctx, id, await leerJson(req)), { ok: true }))
       if (c === 'clasificacion') return json((await clasificar(ctx, id, await leerJson(req)), { ok: true }))
       if (c === 'anulacion') return json((await anular(ctx, id, await leerJson(req)), { ok: true }))
+      if (c === 'descarte') return json((await descartarPropia(ctx, id, await leerJson(req)), { ok: true }))
+      if (c === 'completar') {
+        const { aviso } = await completarOperacion(ctx, id, await leerJson(req))
+        if (aviso) after(() => avisarRevision(ctx, aviso))
+        return json({ ok: true })
+      }
       if (c === 'comprobantes') {
         let form: FormData
         try {

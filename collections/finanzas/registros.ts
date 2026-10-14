@@ -78,6 +78,32 @@ export const FinOperaciones: CollectionConfig = {
       ],
     },
     { name: 'reembolsoA', type: 'relationship', relationTo: 'users', index: true },
+    /* Propuestas (MacAuto docs/63): quien captura no encontró la categoría o
+       la obra/área y escribió una. La operación queda «sin clasificar» con su
+       propuesta a la vista, se avisa a administración y, al clasificarla, la
+       propuesta se borra (queda en la bitácora). */
+    { name: 'categoriaPropuesta', type: 'text' },
+    { name: 'actividadPropuesta', type: 'text' },
+    /* MacAuto docs/68. Foto de ticket: cada concepto es una operación; las del
+       mismo ticket comparten `grupoTicket` (TKT-…) y el mismo archivo.
+       `porRevisar`: nació de una lectura automática (ticket) o quedó sin
+       clasificar en un plan de pagos; quien la capturó puede completarla
+       (concepto, importe, categoría, obra) sin el permiso de corregir, hasta
+       que la marca como revisada. */
+    { name: 'porRevisar', type: 'checkbox', defaultValue: false, index: true },
+    { name: 'grupoTicket', type: 'text', index: true },
+    /* Pagos parciales y a plazos: lo pactado (fecha e importe de cada pago).
+       Lo cobrado o pagado de verdad sigue siendo la suma de los movimientos;
+       el estado de cada pago se calcula (estadoCalendario). */
+    {
+      name: 'calendario',
+      type: 'array',
+      fields: [
+        { name: 'fecha', type: 'text' },
+        { name: 'importe', type: 'number', required: true },
+        { name: 'nota', type: 'text' },
+      ],
+    },
     { name: 'capturadoPor', type: 'relationship', relationTo: 'users', required: true, index: true },
     {
       name: 'origen',

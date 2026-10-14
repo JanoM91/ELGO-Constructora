@@ -59,6 +59,8 @@ export function Inicio() {
           {p.registrar && <Link className="fz-accion fz-accion--teal" href={`${base}/registrar?tipo=entrada`}><span className="fz-accion__ico"><Icono n="entra" /></span><span>Registrar entrada<small>Entró dinero</small></span></Link>}
           {p.registrar && <Link className="fz-accion fz-accion--navy" href={`${base}/registrar?tipo=gasto`}><span className="fz-accion__ico"><Icono n="sale" /></span><span>Registrar gasto<small>Salió dinero</small></span></Link>}
           {p.registrar && <Link className="fz-accion fz-accion--claro" href={`${base}/voz`}><span className="fz-accion__ico"><Icono n="mic" /></span><span>Nota de voz<small>Díctalo y revisa el borrador</small></span></Link>}
+          {p.registrar && <Link className="fz-accion fz-accion--claro" href={`${base}/ticket`}><span className="fz-accion__ico"><Icono n="ticket" /></span><span>Foto de ticket<small>Un registro por concepto</small></span></Link>}
+          {p.registrar && <Link className="fz-accion fz-accion--claro" href={`${base}/plazos`}><span className="fz-accion__ico"><Icono n="calendario" /></span><span>Pagos a plazos<small>Anticipos, estimaciones y pagos parciales</small></span></Link>}
           {p.moverDinero && <Link className="fz-accion fz-accion--claro" href={`${base}/mover`}><span className="fz-accion__ico"><Icono n="traspaso" /></span><span>Mover dinero<small>Traspasos, fondos y socios</small></span></Link>}
         </div>
       )}
@@ -109,6 +111,7 @@ export function Inicio() {
                 ['sin-clasificar', 'Sin clasificar', data.conteos.sinClasificar, p.corregir],
                 ['por-cobrar-pagar', 'Por cobrar o por pagar', data.conteos.porCobrarOPagar, true],
                 ['por-reembolsar', 'Por reembolsar', data.conteos.porReembolsar, true],
+                ['por-completar', 'Por completar (tickets y planes)', data.conteos.porCompletar, p.registrar],
               ].filter(([, , , ver]) => ver).map(([k, l, n]) => (
                 <Link key={String(k)} className="fz-fila" href={`${base}/pendientes?ver=${k}`}>
                   <span className="fz-fila__main"><span className="fz-fila__t1">{l}</span></span>
@@ -196,23 +199,31 @@ export function Movimientos({ cuentaInicial, obraInicial = null }: { cuentaInici
 
 /* ───────────────────────── Pendientes ───────────────────────── */
 
-type Pestana = 'sin-comprobante' | 'por-revisar' | 'sin-clasificar' | 'por-cobrar-pagar' | 'por-reembolsar'
+type Pestana = 'por-completar' | 'sin-comprobante' | 'por-revisar' | 'sin-clasificar' | 'por-cobrar-pagar' | 'por-reembolsar'
 
 function FilaPendiente({ op, pestana, alSubir }: { op: OperacionVista; pestana: Pestana; alSubir: (op: OperacionVista, f: File) => void }) {
   const { catalogo, base } = useFinanzas()
   const dias = Math.max(0, Math.round((Date.parse(catalogo.hoy) - Date.parse(op.fechaReal)) / 86_400_000))
   const puedeSubir = pestana === 'sin-comprobante' && (op.capturadoPor.id === catalogo.usuario.id || catalogo.permisos.corregir)
+  /* Lo que está por completar se abre en la pantalla de revisión (todo el ticket junto). */
+  const destino = pestana === 'por-completar' ? `${base}/revisar?${op.grupoTicket ? `grupo=${encodeURIComponent(op.grupoTicket)}` : `op=${op.id}`}` : `${base}/operacion/${op.id}`
+  const vence = op.venceEl ? Math.round((Date.parse(op.venceEl) - Date.parse(catalogo.hoy)) / 86_400_000) : null
   return (
     <div className="fz-fila fz-fila--estatica">
-      <Link className="fz-fila__main" href={`${base}/operacion/${op.id}`}>
+      <Link className="fz-fila__main" href={destino}>
         <span className="fz-fila__t1">{op.concepto}</span>
         <span className="fz-fila__t2">{op.folio} · {pestana === 'por-reembolsar' && op.reembolsoA ? `Pagó ${op.reembolsoA.nombre}` : op.capturadoPor.nombre} · {fecha(op.fechaReal)} · <b className={dias >= 8 ? 'fz-rojo' : dias >= 3 ? 'fz-ambar' : ''}>{dias === 0 ? 'hoy' : `hace ${dias} día${dias === 1 ? '' : 's'}`}</b></span>
+        {pestana === 'por-cobrar-pagar' && (op.calendario || op.venceEl) && (
+          <span className="fz-fila__t2">{op.calendario?.proxima ? `Próximo pago ${fmt(op.calendario.proxima.faltaCentavos)} · ` : ''}{vence == null ? 'sin fecha' : <b className={vence < 0 ? 'fz-rojo' : vence <= 3 ? 'fz-ambar' : ''}>{vence < 0 ? `venció hace ${-vence} día${vence === -1 ? '' : 's'}` : vence === 0 ? 'vence hoy' : `vence ${fecha(op.venceEl)}`}</b>}</span>
+        )}
+        {pestana === 'por-completar' && op.grupoTicket && <span className="fz-fila__t2">Del ticket {op.contraparte ? `de ${op.contraparte}` : op.grupoTicket}</span>}
+        {pestana === 'sin-clasificar' && (op.categoriaPropuesta || op.actividadPropuesta) && <span className="fz-fila__t2">Propuso {[op.categoriaPropuesta && `la categoría «${op.categoriaPropuesta}»`, op.actividadPropuesta && `la obra «${op.actividadPropuesta}»`].filter(Boolean).join(' y ')}</span>}
       </Link>
       <span className="fz-monto">{fmt(pestana === 'por-cobrar-pagar' || pestana === 'por-reembolsar' ? op.pendienteCentavos : op.totalCentavos)}</span>
       {puedeSubir && (
         <label className="fz-btn fz-btn--claro fz-btn--chico fz-subir"><Icono n="camara" chico />Subir<input type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) alSubir(op, f) }} aria-label={`Subir comprobante de ${op.folio}`} /></label>
       )}
-      {pestana !== 'sin-comprobante' && <Link className="fz-btn fz-btn--claro fz-btn--chico" href={`${base}/operacion/${op.id}`}>Abrir</Link>}
+      {pestana !== 'sin-comprobante' && <Link className="fz-btn fz-btn--claro fz-btn--chico" href={destino}>{pestana === 'por-completar' ? 'Completar' : 'Abrir'}</Link>}
     </div>
   )
 }
@@ -222,6 +233,7 @@ export function Pendientes({ inicial }: { inicial: string | null }) {
   const p = catalogo.permisos
   const { data, error, recargar } = useCarga<PendientesT>('pendientes')
   const pestanas: [Pestana, string, OperacionVista[] | undefined, boolean][] = [
+    ['por-completar', 'Por completar', data?.porCompletar, p.registrar || p.corregir],
     ['sin-comprobante', 'Sin comprobante', data?.sinComprobante, true],
     ['por-revisar', 'Por revisar', data?.porRevisar, p.revisarComprobantes],
     ['sin-clasificar', 'Sin clasificar', data?.sinClasificar, p.corregir],
@@ -230,6 +242,14 @@ export function Pendientes({ inicial }: { inicial: string | null }) {
   ]
   const visibles = pestanas.filter((x) => x[3])
   const [pestana, setPestana] = useState<Pestana>((visibles.find((x) => x[0] === inicial)?.[0] ?? 'sin-comprobante') as Pestana)
+  /* Las pestañas se desplazan de lado en el celular: la elegida (por ejemplo, al llegar desde el inicio) se trae a la vista. */
+  useEffect(() => {
+    try {
+      document.querySelector('.fz-pestanas .is-on')?.scrollIntoView({ inline: 'center', block: 'nearest' })
+    } catch {
+      /* navegador viejo: no pasa nada */
+    }
+  }, [pestana])
   const [responsable, setResponsable] = useState<number | 'todos'>('todos')
   const [antiguedad, setAntiguedad] = useState<'' | '0-2' | '3-7' | '8+'>('')
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'malo'; texto: string } | null>(null)
@@ -494,6 +514,12 @@ export function Configuracion() {
         </>
       )}
       {p.gestionarUsuarios && <Sesiones />}
+      {p.gestionarUsuarios && (
+        <Paso n={7} titulo="Avisos por correo">
+          <p className="fz-ayuda">Quién recibe un correo cuando alguien propone una categoría, obra o área que no existe. Si no eliges a nadie, les llega a los superadministradores y a los roles que pueden «Corregir, clasificar y anular». Lo pendiente también se ve siempre en Pendientes. Necesita RESEND_API_KEY y LEADS_FROM_EMAIL en Vercel.</p>
+          <div className="fz-chips"><a className="fz-btn fz-btn--claro fz-btn--chico" href={`${rutaAdmin}/globals/fin-configuracion`}>Elegir quién recibe los avisos</a></div>
+        </Paso>
+      )}
       {!p.configurar && !p.gestionarUsuarios && <Aviso tono="info">Tu rol no incluye configuración.</Aviso>}
     </div>
   )

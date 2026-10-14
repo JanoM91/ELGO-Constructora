@@ -4,11 +4,16 @@
  * Detalle de una operación: sus cobros o pagos, comprobantes, historial y,
  * según el rol, las acciones para liquidar, corregir, clasificar o anular.
  * Nada se borra: cada cambio queda en la bitácora con su motivo.
+ *
+ * Heredado de MacAuto (docs/63 y 68): si quien capturó propuso una categoría
+ * u obra, aquí se ve la propuesta y quien tiene «Configurar» la da de alta con
+ * un toque al clasificar. Un plan de pagos muestra sus pagos pactados.
  */
 import Link from 'next/link'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { aCentavos } from '../../../lib/finanzas/reglas'
 import type { DetalleOperacion } from '../../../lib/finanzas/tipos'
+import { SelectorObra } from './clasificacion'
 import { api, Aviso, esInterno, fecha, Ficha, fmt, Icono, momento, NOMBRE_INTERNO, nuevaClave, pastillasDe, Pastilla, Segmentos, signoDe, useFinanzas, Volver } from './comun'
 
 type Modo = null | 'pago' | 'corregir' | 'clasificar' | 'anular'
@@ -27,7 +32,15 @@ export default function Detalle({ id }: { id: number }) {
   // formularios
   const [pago, setPago] = useState({ importe: '', cuenta: null as number | null, medio: 'efectivo', fecha: catalogo.hoy })
   const [cor, setCor] = useState({ importe: '', fechaReal: '', concepto: '', categoria: '', contraparte: '', cuenta: '', motivo: '' })
-  const [cla, setCla] = useState({ categoria: null as number | null, asignacion: 'general' as 'actividad' | 'general', actividad: null as number | null })
+  const [cla, setCla] = useState({
+    categoria: null as number | null,
+    asignacion: 'general' as 'actividad' | 'general',
+    actividad: null as number | null,
+    /* Dar de alta la propuesta (null = elegir una existente). */
+    crearCategoria: null as string | null,
+    crearActividad: null as string | null,
+    tipoActividad: 'obra' as 'obra' | 'area',
+  })
   const [motivo, setMotivo] = useState('')
 
   const cargar = useCallback(() => {
@@ -39,9 +52,20 @@ export default function Detalle({ id }: { id: number }) {
     setModo(m); setErrForm(null); clave.current = nuevaClave()
     if (!d) return
     const op = d.operacion
-    if (m === 'pago') setPago({ importe: '', cuenta: null, medio: 'efectivo', fecha: catalogo.hoy })
+    /* En un plan de pagos, el importe sugerido es lo que falta del siguiente pago. */
+    if (m === 'pago') setPago({ importe: op.calendario?.proxima ? (op.calendario.proxima.faltaCentavos / 100).toFixed(2) : '', cuenta: null, medio: 'efectivo', fecha: catalogo.hoy })
     if (m === 'corregir') setCor({ importe: (op.totalCentavos / 100).toFixed(2), fechaReal: op.fechaReal, concepto: op.concepto, categoria: op.categoria ? String(op.categoria.id) : '', contraparte: op.contraparte, cuenta: '', motivo: '' })
-    if (m === 'clasificar') setCla({ categoria: op.categoria?.id ?? null, asignacion: op.actividad ? 'actividad' : 'general', actividad: op.actividad?.id ?? null })
+    if (m === 'clasificar') {
+      const configura = catalogo.permisos.configurar
+      setCla({
+        categoria: op.categoria?.id ?? null,
+        asignacion: op.actividad || op.actividadPropuesta ? 'actividad' : 'general',
+        actividad: op.actividad?.id ?? null,
+        crearCategoria: !op.categoria && op.categoriaPropuesta && configura ? op.categoriaPropuesta : null,
+        crearActividad: op.actividadPropuesta && configura ? op.actividadPropuesta : null,
+        tipoActividad: 'obra',
+      })
+    }
     if (m === 'anular') setMotivo('')
   }
 
@@ -74,6 +98,7 @@ export default function Detalle({ id }: { id: number }) {
   const { signo, clase } = signoDe(op)
   const cats = catalogo.categorias.filter((c) => c.tipo === op.tipo)
   const quien = op.reembolsoA?.nombre.split(' ')[0] ?? 'la persona'
+  const p = catalogo.permisos
 
   return (
     <div className="fz-stack">
@@ -95,7 +120,10 @@ export default function Detalle({ id }: { id: number }) {
           <h3>{reembolso ? `Registrar reembolso a ${quien}` : entra ? 'Registrar cobro' : 'Registrar pago'}</h3>
           <label className="fz-campo"><span className="fz-etiqueta">Importe <span className="fz-opcional">pendiente {fmt(op.pendienteCentavos, true)}</span></span>
             <span className="fz-dinero"><span>$</span><input className="fz-input" inputMode="decimal" value={pago.importe} onChange={(e) => setPago({ ...pago, importe: e.target.value })} /></span></label>
-          <div className="fz-chips"><Ficha onClick={() => setPago({ ...pago, importe: (op.pendienteCentavos / 100).toFixed(2) })}>Todo el saldo: {fmt(op.pendienteCentavos, true)}</Ficha></div>
+          <div className="fz-chips">
+            {op.calendario?.proxima && op.calendario.proxima.faltaCentavos !== op.pendienteCentavos && <Ficha onClick={() => setPago({ ...pago, importe: ((op.calendario?.proxima?.faltaCentavos ?? 0) / 100).toFixed(2) })}>Pago {op.calendario.proxima.numero}: {fmt(op.calendario.proxima.faltaCentavos, true)}</Ficha>}
+            <Ficha onClick={() => setPago({ ...pago, importe: (op.pendienteCentavos / 100).toFixed(2) })}>Todo el saldo: {fmt(op.pendienteCentavos, true)}</Ficha>
+          </div>
           <div className="fz-campo"><span className="fz-etiqueta">{entra ? '¿A qué cuenta entró?' : reembolso ? '¿De qué cuenta o caja sale el reembolso?' : '¿De qué cuenta salió?'}</span>
             <div className="fz-chips">{catalogo.cuentas.map((c) => <Ficha key={c.id} activa={pago.cuenta === c.id} onClick={() => setPago({ ...pago, cuenta: c.id, medio: c.tipo === 'banco' ? 'transferencia' : 'efectivo' })}>{c.nombre}</Ficha>)}</div></div>
           <Segmentos etiqueta="Medio" valor={pago.medio} alCambiar={(v) => setPago({ ...pago, medio: v })} opciones={[['efectivo', 'Efectivo'], ['transferencia', 'Transferencia'], ['tarjeta', 'Tarjeta'], ['cheque', 'Cheque']]} />
@@ -137,16 +165,46 @@ export default function Detalle({ id }: { id: number }) {
       {modo === 'clasificar' && (
         <div className="fz-tarjeta fz-pad fz-stack">
           <h3>Clasificar {op.folio}</h3>
-          <div className="fz-campo"><span className="fz-etiqueta">Categoría</span><div className="fz-chips">{cats.map((c) => <Ficha key={c.id} activa={cla.categoria === c.id} onClick={() => setCla({ ...cla, categoria: c.id, ...(c.actividadSugerida && !cla.actividad ? { asignacion: 'actividad' as const, actividad: c.actividadSugerida } : {}) })}>{c.nombre}</Ficha>)}</div></div>
+          <div className="fz-campo"><span className="fz-etiqueta">Categoría</span>
+            {op.categoriaPropuesta && <p className="fz-ayuda">{op.capturadoPor.nombre.split(' ')[0]} no la encontró y propuso <b>«{op.categoriaPropuesta}»</b>.{!p.configurar && ' Elige la más parecida; dar de alta categorías nuevas es de los roles con «Configurar».'}</p>}
+            <div className="fz-chips">
+              {cats.map((c) => <Ficha key={c.id} activa={cla.crearCategoria == null && cla.categoria === c.id} onClick={() => setCla({ ...cla, categoria: c.id, crearCategoria: null, ...(c.actividadSugerida && !cla.actividad && cla.crearActividad == null ? { asignacion: 'actividad' as const, actividad: c.actividadSugerida } : {}) })}>{c.nombre}</Ficha>)}
+              {p.configurar && <Ficha punteada activa={cla.crearCategoria != null} onClick={() => setCla({ ...cla, categoria: null, crearCategoria: cla.crearCategoria ?? op.categoriaPropuesta ?? '' })}><Icono n="mas" chico />{op.categoriaPropuesta ? `Dar de alta «${op.categoriaPropuesta}»` : 'Categoría nueva'}</Ficha>}
+            </div>
+            {cla.crearCategoria != null && (
+              <div className="fz-nuevo">
+                <input className="fz-input" value={cla.crearCategoria} onChange={(e) => setCla({ ...cla, crearCategoria: e.target.value })} maxLength={60} aria-label="Nombre de la categoría nueva" />
+                <p className="fz-ayuda">Se crea como categoría de {entra ? 'entradas' : 'gastos'} y queda disponible para todos. Puedes ajustar el nombre; después se edita en Finanzas → Categorías.</p>
+              </div>
+            )}
+          </div>
           <div className="fz-campo"><span className="fz-etiqueta">¿A qué se asigna?</span>
             <Segmentos etiqueta="Asignación" valor={cla.asignacion} alCambiar={(v) => setCla({ ...cla, asignacion: v })} opciones={[['actividad', 'Obra o área'], ['general', 'General']]} />
-            {cla.asignacion === 'actividad' && <div className="fz-chips">{catalogo.actividades.map((a) => <Ficha key={a.id} activa={cla.actividad === a.id} onClick={() => setCla({ ...cla, actividad: a.id })}>{a.nombre}</Ficha>)}</div>}
+            {cla.asignacion === 'actividad' && (
+              <>
+                {op.actividadPropuesta && <p className="fz-ayuda">Propuso la obra <b>«{op.actividadPropuesta}»</b>.{!p.configurar && ' Elige una existente; dar de alta obras es de los roles con «Configurar».'}</p>}
+                {p.configurar ? (
+                  <SelectorObra valor={cla.actividad} propuesta={cla.crearActividad}
+                    alElegir={(x) => setCla({ ...cla, actividad: x, crearActividad: null })} alProponer={(t) => setCla({ ...cla, actividad: null, crearActividad: t })} />
+                ) : (
+                  <div className="fz-chips">{catalogo.actividades.map((a) => <Ficha key={a.id} activa={cla.actividad === a.id} onClick={() => setCla({ ...cla, actividad: a.id })}>{a.nombre}</Ficha>)}</div>
+                )}
+                {cla.crearActividad != null && (
+                  <Segmentos etiqueta="Tipo" valor={cla.tipoActividad} alCambiar={(v) => setCla({ ...cla, tipoActividad: v })} opciones={[['obra', 'Darla de alta como obra'], ['area', 'Como área de soporte']]} />
+                )}
+              </>
+            )}
           </div>
           {errForm && <Aviso tono="malo">{errForm}</Aviso>}
           <div className="fz-acciones-fin">
-            <button type="button" className="fz-btn fz-btn--navy" disabled={enviando || !cla.categoria} onClick={() => enviar(() => api.post(`operaciones/${id}/clasificacion`, {
-              categoria: cla.categoria, asignacion: cla.asignacion, actividad: cla.asignacion === 'actividad' ? cla.actividad : null,
-            }), 'Clasificado.')}>{enviando ? 'Guardando…' : 'Guardar clasificación'}</button>
+            <button type="button" className="fz-btn fz-btn--navy" disabled={enviando || !(cla.categoria || (cla.crearCategoria ?? '').trim().length >= 3)} onClick={() => enviar(() => api.post(`operaciones/${id}/clasificacion`, {
+              categoria: cla.crearCategoria != null ? null : cla.categoria,
+              crearCategoria: cla.crearCategoria != null ? cla.crearCategoria.trim() : null,
+              asignacion: cla.asignacion,
+              actividad: cla.asignacion === 'actividad' && cla.crearActividad == null ? cla.actividad : null,
+              crearActividad: cla.asignacion === 'actividad' && cla.crearActividad != null ? cla.crearActividad.trim() : null,
+              tipoActividad: cla.tipoActividad,
+            }), cla.crearCategoria != null || cla.crearActividad != null ? 'Clasificado. Lo nuevo ya está en el catálogo.' : 'Clasificado.')}>{enviando ? 'Guardando…' : 'Guardar clasificación'}</button>
             <button type="button" className="fz-btn fz-btn--claro" onClick={() => setModo(null)}>Cancelar</button>
           </div>
         </div>
@@ -165,6 +223,29 @@ export default function Detalle({ id }: { id: number }) {
         </div>
       )}
 
+      {d.acciones.completar && op.porRevisar && !modo && (
+        <Aviso tono="aviso">
+          {op.grupoTicket ? 'Viene de una foto de ticket' : 'Quedó sin clasificar'} y está <b>por completar</b>: revisa concepto, importe, categoría y obra.{' '}
+          <Link className="fz-link" href={`${base}/revisar?${op.grupoTicket ? `grupo=${encodeURIComponent(op.grupoTicket)}` : `op=${op.id}`}`}>Completar ahora</Link>
+        </Aviso>
+      )}
+
+      {op.calendario && (
+        <section className="fz-bloque">
+          <h3 className="fz-bloque__h">Pagos pactados</h3>
+          <div className="fz-tarjeta fz-calendario">
+            {op.calendario.cuotas.map((c) => (
+              <div className="fz-calendario__fila" key={c.numero}>
+                <span className="fz-grow"><b>{c.fecha ? fecha(c.fecha, true) : 'Sin fecha'}</b>{c.nota ? <span className="fz-tenue"> · {c.nota}</span> : null}{c.estado === 'parcial' && <span className="fz-tenue"> · faltan {fmt(c.faltaCentavos, true)}</span>}</span>
+                <span className="fz-num">{fmt(c.centavos)}</span>
+                <Pastilla tono={c.estado === 'cubierta' ? 'ok' : c.estado === 'vencida' ? 'malo' : c.estado === 'proxima' || c.estado === 'parcial' ? 'aviso' : 'gris'}>{({ cubierta: 'Pagado', parcial: 'Parcial', vencida: 'Vencido', proxima: 'Siguiente', futura: 'Pendiente', sin_fecha: 'Pendiente' } as const)[c.estado]}</Pastilla>
+              </div>
+            ))}
+          </div>
+          <p className="fz-ayuda">Lo {entra ? 'cobrado' : 'pagado'} se aplica a los pagos en orden de fecha. Si se {entra ? 'cobra' : 'paga'} de más o de menos, el siguiente pago muestra lo que falta.</p>
+        </section>
+      )}
+
       <section className="fz-bloque">
         <h3 className="fz-bloque__h">Datos</h3>
         <dl className="fz-dl">
@@ -172,8 +253,8 @@ export default function Detalle({ id }: { id: number }) {
           <dt>Capturado</dt><dd>{momento(op.capturadoEn)} · {op.capturadoPor.nombre}</dd>
           <dt>Estado</dt><dd>{op.anulada ? 'Anulado' : interno ? 'Registrado' : op.pendienteCentavos > 0 ? <>{fmt(op.pagadoCentavos)} {reembolso ? 'reembolsado' : entra ? 'cobrado' : 'pagado'} · <b>{fmt(op.pendienteCentavos)} {reembolso ? `por reembolsar a ${quien}` : 'pendiente'}</b>{op.venceEl ? ` · vence ${fecha(op.venceEl, true)}` : ''}</> : reembolso ? 'Reembolsado' : 'Liquidado'}</dd>
           {reembolso && (<><dt>Pagado con</dt><dd>Dinero propio de {op.reembolsoA?.nombre ?? '—'}</dd></>)}
-          {!interno && (<><dt>Categoría</dt><dd>{op.categoria?.nombre ?? <Pastilla tono="aviso">Sin clasificar</Pastilla>}</dd></>)}
-          {!interno && (<><dt>Obra o área</dt><dd>{op.asignacion === 'pendiente' ? <Pastilla tono="aviso">Pendiente de asignar</Pastilla> : op.asignacion === 'actividad' ? op.actividad?.nombre ?? '—' : `General${op.actividad ? ` (sugerida: ${op.actividad.nombre})` : ''}`}</dd></>)}
+          {!interno && (<><dt>Categoría</dt><dd>{op.categoria?.nombre ?? <span className="fz-propuesta"><Pastilla tono="aviso">Sin clasificar</Pastilla>{op.categoriaPropuesta && <span>propuso «{op.categoriaPropuesta}»</span>}</span>}</dd></>)}
+          {!interno && (<><dt>Obra o área</dt><dd>{op.asignacion === 'pendiente' ? <span className="fz-propuesta"><Pastilla tono="aviso">Pendiente de asignar</Pastilla>{op.actividadPropuesta && <span>propuso «{op.actividadPropuesta}»</span>}</span> : op.asignacion === 'actividad' ? op.actividad?.nombre ?? '—' : `General${op.actividad ? ` (sugerida: ${op.actividad.nombre})` : ''}`}</dd></>)}
           <dt>Contraparte</dt><dd>{op.contraparte || '—'}</dd>
           {op.notas && (<><dt>Notas</dt><dd>{op.notas}</dd></>)}
         </dl>
@@ -218,7 +299,7 @@ export default function Detalle({ id }: { id: number }) {
           {d.bitacora.map((b) => (
             <div className="fz-fila fz-fila--estatica" key={b.id}>
               <span className="fz-fila__main">
-                <span className="fz-fila__t1 fz-normal">{ACCION[b.accion] ?? b.accion}{b.campo ? ` ${b.campo}: ${b.anterior} → ${b.nuevo}` : b.nuevo ? ` ${b.nuevo}` : ''}</span>
+                <span className="fz-fila__t1 fz-normal">{ACCION[b.accion] ?? b.accion}{b.campo ? ` ${b.campo}: ${b.anterior} → ${b.nuevo}` : b.nuevo ? `${b.accion === 'crear' ? ' ·' : ''} ${b.nuevo}` : ''}</span>
                 {b.motivo && <span className="fz-fila__t2">Motivo: {b.motivo}</span>}
                 <span className="fz-fila__t2">{momento(b.fecha)} · {b.usuario.nombre}</span>
               </span>
@@ -232,7 +313,7 @@ export default function Detalle({ id }: { id: number }) {
           <h3 className="fz-bloque__h">Acciones de administración</h3>
           <div className="fz-chips">
             {!interno && <button type="button" className="fz-btn fz-btn--claro fz-btn--chico" onClick={() => abrir('corregir')}>Corregir</button>}
-            {!interno && op.clasificacion === 'pendiente' && <button type="button" className="fz-btn fz-btn--claro fz-btn--chico" onClick={() => abrir('clasificar')}>Clasificar</button>}
+            {!interno && op.clasificacion === 'pendiente' && <button type="button" className={`fz-btn fz-btn--chico ${op.categoriaPropuesta || op.actividadPropuesta ? 'fz-btn--navy' : 'fz-btn--claro'}`} onClick={() => abrir('clasificar')}>{op.categoriaPropuesta || op.actividadPropuesta ? 'Revisar propuesta y clasificar' : 'Clasificar'}</button>}
             <button type="button" className="fz-btn fz-btn--peligro fz-btn--chico" onClick={() => abrir('anular')}>Anular</button>
           </div>
           {interno && <p className="fz-ayuda">Un traspaso, aportación o retiro no se corrige: se anula y se vuelve a registrar.</p>}

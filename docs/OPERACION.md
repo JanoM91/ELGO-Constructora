@@ -25,15 +25,15 @@ Todo lo demás es igual: cobros y pagos parciales, comprobantes privados, correc
 | Base de datos | Supabase `elgo-finanzas` (ref `thmpxlacrftqynwnctmu`, us-east-2), organización Exkalibur Consulting | `DATABASE_URL` (Sensitive, solo Production) |
 | Secreto de sesiones | — | `PAYLOAD_SECRET` (Sensitive), nuevo: `openssl rand -hex 32` |
 | Comprobantes | Vercel Blob **privado** `elgo-finanzas-comprobantes` (`store_wyxad23rDNz8wdAX`), conectado con prefijo `FINANZAS_BLOB` | `FINANZAS_BLOB_READ_WRITE_TOKEN` |
-| Nota de voz | Anthropic (Claude) | `ANTHROPIC_API_KEY` (Sensitive), llave propia de ELGO con límite de gasto; opcional `ANTHROPIC_MODEL` |
-| Correo «Olvidé mi contraseña» | Resend | `RESEND_API_KEY`, `LEADS_FROM_EMAIL` (opcionales) |
+| Nota de voz, foto de ticket y pagos a plazos | Anthropic (Claude) | `ANTHROPIC_API_KEY` (Sensitive), llave propia de ELGO con límite de gasto; opcional `ANTHROPIC_MODEL` |
+| Correo «Olvidé mi contraseña» y avisos de clasificación | Resend | `RESEND_API_KEY`, `LEADS_FROM_EMAIL` (opcionales) |
 | Identidad | — | `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SITE_NAME=ELGO`, `NEXT_PUBLIC_LOCATION_CITY=Xalapa`, `NEXT_PUBLIC_LOCATION_TIMEZONE=America/Mexico_City` |
 
 Acordado con ELGO (12-oct-2026): ELGO paga los costos de operación (Supabase, Vercel, dominio, IA).
 
 ## 3. Base de datos en Supabase
 
-Proyecto `elgo-finanzas` (ref `thmpxlacrftqynwnctmu`, us-east-2), creado el 12-oct-2026. La app entra por `aws-0-us-east-2.pooler.supabase.com:6543` (modo transacción) con el usuario `payload_app.thmpxlacrftqynwnctmu`. Igual que Orthopedic Vet's: rol propio `payload_app` dueño de las tablas, pooler en modo transacción, tablas en `public` con **RLS activado y sin políticas** (la API REST de Supabase no lee nada; el asesor de Supabase marcará «RLS Enabled No Policy», es intencional). Migraciones en `migrations/`: `20261012_145835_inicial` (esquema completo) y `20261012_145900_rls_supabase`. Se aplican solas al arrancar en producción.
+Proyecto `elgo-finanzas` (ref `thmpxlacrftqynwnctmu`, us-east-2), creado el 12-oct-2026. La app entra por `aws-0-us-east-2.pooler.supabase.com:6543` (modo transacción) con el usuario `payload_app.thmpxlacrftqynwnctmu`. Igual que Orthopedic Vet's: rol propio `payload_app` dueño de las tablas, pooler en modo transacción, tablas en `public` con **RLS activado y sin políticas** (la API REST de Supabase no lee nada; el asesor de Supabase marcará «RLS Enabled No Policy», es intencional). Migraciones en `migrations/`: `20261012_145835_inicial` (esquema completo), `20261012_145900_rls_supabase` y `20261014_193722_propuestas_tickets_plazos` (2 tablas nuevas con RLS y 4 columnas). Se aplican solas al arrancar en producción.
 
 ## 4. Arranque (una sola vez)
 
@@ -56,9 +56,21 @@ Proyecto `elgo-finanzas` (ref `thmpxlacrftqynwnctmu`, us-east-2), creado el 12-o
 
 No probado aquí: Supabase real, subida de comprobantes (necesita el almacén privado), nota de voz con llave real y dictado en teléfonos reales, correo de recuperación.
 
-## 6. Pendiente
+## 6. Funciones traídas de MacAuto (14-oct-2026)
 
-- **Producción (12-oct-2026)**: publicada en https://elgo-finanzas.vercel.app; las 2 migraciones se aplicaron solas (18 tablas, todas con RLS, dueño `payload_app`). Falta `FINANZAS_BLOB_READ_WRITE_TOKEN` (el almacén se conectó sin él) y `ANTHROPIC_API_KEY`.
+| Función | Cómo se usa en ELGO |
+|---|---|
+| Proponer categoría u obra | Al registrar, «Otra · escribirla» (categoría) u «Otra obra · escribirla». Queda pendiente de asignar con la propuesta; administración la ve en Pendientes y, al clasificar, la da de alta (como obra o área de soporte) o la cambia por una existente. |
+| Avisos por correo | Configuración → Paso 7: elegir quién recibe el aviso. Sin nadie elegido, va a superadministradores y a quien puede clasificar. Requiere Resend. |
+| Foto de ticket | Inicio → «Foto de ticket». Claude lee los conceptos; se guarda un gasto por concepto (prorrateando descuentos e IVA) marcado «por completar»; quien capturó elige categoría y obra en «Revisar» o lo descarta. |
+| Pagos a plazos | Inicio → «Pagos a plazos». Se dicta o escribe el plan («compramos un transformador de 180 mil, anticipo de 60 y dos pagos…»); Claude arma las cuotas y el detalle muestra «Pagos pactados» (pagado / parcial / pendiente). Al pagar, sugiere el importe de la siguiente cuota. |
+| Pendientes | Nueva pestaña «Por completar» (tickets y planes); «Por cobrar o pagar» se ordena por vencimiento. |
+
+Verificación (local): `test:finanzas` 66/66; integración 44/44 + 38/38 (propuestas, avisos, ticket con IA simulada, plazos, completar, descartar, permisos); pantallas 320/390/1280 px sin errores ni desbordes. No probado: Claude real con tickets reales, correo real.
+
+## 7. Pendiente
+
+- **Producción (12-oct-2026)**: publicada en https://elgo-finanzas.vercel.app; las 2 migraciones se aplicaron solas (18 tablas, todas con RLS, dueño `payload_app`). `FINANZAS_BLOB_READ_WRITE_TOKEN` ya agregado. Falta `ANTHROPIC_API_KEY` (nota de voz, foto de ticket y pagos a plazos) y, opcional, Resend para avisos.
 - **Logotipo oficial** en vector: reemplazar `public/logo-*.png` y volver a correr `scripts/iconos-finanzas/generar-iconos.py`.
 - **Multiempresa**: en la sesión de definición se acordó separar empresas desde el día 1. Esta réplica sigue el modelo de Orthopedic Vet's (una instalación por empresa, con base propia), que aísla bien los datos pero no comparte una sola base. Decidir antes de vender a otra constructora.
 - **Obra pública a detalle** (siguiente iteración): estimaciones con amortización de anticipo, retenciones (5 al millar, fondo de garantía) y facturas CFDI ligadas al cobro. Hoy una estimación se registra por su importe neto cobrado.

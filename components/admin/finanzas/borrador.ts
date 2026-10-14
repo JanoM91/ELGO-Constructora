@@ -36,6 +36,9 @@ export type Borrador = {
   reembolsoA: number | null
   /** Cuántos archivos había (no se conservan). */
   archivos: number
+  /** Lo que escribió porque no encontró la categoría o la obra (null = no propone). Opcionales: los borradores viejos no los traen. */
+  categoriaPropuesta?: string | null
+  actividadPropuesta?: string | null
 }
 
 const VIGENCIA_MS = 24 * 60 * 60 * 1000

@@ -27,6 +27,7 @@ import { aCentavos, sumarDias } from '../../../lib/finanzas/reglas'
 import type { OperacionVista } from '../../../lib/finanzas/tipos'
 import type { PersonaBreve } from '../../../lib/finanzas/tipos'
 import { type Asig, claveBorrador, escribirBorrador, type Estado, leerBorrador, type Medio, type Tipo } from './borrador'
+import { SelectorObra } from './clasificacion'
 import { api, Aviso, ErrorApi, fecha, Ficha, fmt, Icono, nuevaClave, pastillasDe, Segmentos, useFinanzas } from './comun'
 
 type Listo = { op: OperacionVista; avisoArchivos: string | null; duplicado: boolean }
@@ -54,6 +55,9 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
   const [concepto, setConcepto] = useState('')
   const [categoria, setCategoria] = useState<number | null>(null)
   const [noSe, setNoSe] = useState(false)
+  /* null = no propone; texto = lo que escribió porque no encontró la categoría o la obra (MacAuto docs/63). */
+  const [catNueva, setCatNueva] = useState<string | null>(null)
+  const [actNueva, setActNueva] = useState<string | null>(null)
   const [asig, setAsig] = useState<Asig | null>(null)
   const [asigTocada, setAsigTocada] = useState(false)
   const [actividad, setActividad] = useState<number | null>(null)
@@ -79,6 +83,7 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
       setTipo(b.tipo); setImporte(b.importe); setEstado(b.estado); setCuenta(b.cuenta); setMedio(b.medio); setConcepto(b.concepto)
       setCategoria(b.categoria); setNoSe(b.noSe); setAsig(b.asig); setAsigTocada(b.asigTocada)
       setActividad(b.actividad); setFechaReal(b.fechaReal || hoy); setVenceEl(b.venceEl); setMas(b.mas)
+      setCatNueva(typeof b.categoriaPropuesta === 'string' ? b.categoriaPropuesta : null); setActNueva(typeof b.actividadPropuesta === 'string' ? b.actividadPropuesta : null)
       setContraparte(b.contraparte); setNotas(b.notas); setReembolsoA(b.reembolsoA ?? null); setOrigen(b.origen === 'voz' ? 'voz' : 'manual')
       setRecuperado({ archivos: b.archivos, origen: b.origen === 'voz' ? 'voz' : 'manual' })
     }
@@ -93,17 +98,17 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
   }, [estado, p.ver, equipo])
 
   /* Cada cambio se guarda en el teléfono (con una pausa breve para no escribir en cada tecla). */
-  const vacio = !importe && !concepto.trim() && categoria == null && !contraparte && !notas
+  const vacio = !importe && !concepto.trim() && categoria == null && !contraparte && !notas && !catNueva && !actNueva
   useEffect(() => {
     if (!borradorListo.current || listo) return
     const t = setTimeout(() => {
       escribirBorrador(claveB, vacio ? null : {
         v: 1, guardadoEn: Date.now(), origen, tipo, importe, estado, cuenta, medio, concepto, categoria, noSe, asig, asigTocada, actividad,
-        fechaReal, venceEl, mas, contraparte, notas, reembolsoA, archivos: archivos.length,
+        fechaReal, venceEl, mas, contraparte, notas, reembolsoA, archivos: archivos.length, categoriaPropuesta: catNueva, actividadPropuesta: actNueva,
       })
     }, 300)
     return () => clearTimeout(t)
-  }, [claveB, listo, vacio, origen, tipo, importe, estado, cuenta, medio, concepto, categoria, noSe, asig, asigTocada, actividad, fechaReal, venceEl, mas, contraparte, notas, reembolsoA, archivos.length])
+  }, [claveB, listo, vacio, origen, tipo, importe, estado, cuenta, medio, concepto, categoria, noSe, asig, asigTocada, actividad, fechaReal, venceEl, mas, contraparte, notas, reembolsoA, archivos.length, catNueva, actNueva])
 
   const total = aCentavos(importe)
   const totalOk = Number.isInteger(total) && total > 0
@@ -130,6 +135,7 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
     }
     setCategoria(id)
     setNoSe(false)
+    setCatNueva(null)
     const c = categorias.find((x) => x.id === id)
     if (!c) return
     /* Con categoría elegida: los conceptos de soporte van a su área sugerida;
@@ -144,9 +150,16 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
       }
     }
   }
+  function proponerCategoria() {
+    setError(null)
+    setCategoria(null)
+    setNoSe(false)
+    setCatNueva((x) => x ?? '')
+  }
   function elegirAsignacion(a: Asig) {
     setAsigTocada(true)
     setAsig(a)
+    if (a !== 'actividad') setActNueva(null)
     if (a === 'actividad' && !actividad && cat?.actividadSugerida) setActividad(cat.actividadSugerida)
   }
   function elegirCuenta(id: number) {
@@ -172,7 +185,9 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
     if (estado === 'realizado' && !cuenta) return tipo === 'entrada' ? 'Elige a qué cuenta o caja entró.' : 'Elige de qué cuenta o caja salió.'
     if (estado === 'propio' && tipo !== 'gasto') return '«De mi bolsa» solo aplica a gastos.'
     if (!concepto.trim()) return 'Escribe un concepto breve.'
-    if (asig === 'actividad' && !actividad) return 'Elige la obra o el área.'
+    if (catNueva != null && catNueva.trim().length < 3) return 'Escribe el nombre de la categoría que propones (mínimo 3 letras), o elige una de la lista.'
+    if (asig === 'actividad' && actNueva != null && actNueva.trim().length < 3) return 'Escribe el nombre de la obra que propones (mínimo 3 letras), o elige una de la lista.'
+    if (asig === 'actividad' && !actividad && actNueva == null) return 'Elige la obra o el área.'
     if (fechaReal > hoy) return 'La fecha no puede ser futura.'
     if (fechaCorte && fechaReal < fechaCorte) return `La fecha es anterior al corte (${fecha(fechaCorte, true)}).`
     return null
@@ -187,12 +202,15 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
     }
     setError(null)
     setGuardando(true)
-    const asignacion: Asig = asig ?? 'pendiente'
+    /* Una obra propuesta todavía no existe: se guarda «pendiente de asignar» con la propuesta. */
+    const actPropuesta = asig === 'actividad' && actNueva != null ? actNueva.trim() : ''
+    const asignacion: Asig = actPropuesta ? 'pendiente' : asig ?? 'pendiente'
     try {
       const propio = estado === 'propio'
       const r = await api.post<{ operacion: OperacionVista; duplicado: boolean }>('operaciones', {
         tipo, importe: centavosAPesos(total), fechaReal, estado: propio ? 'pendiente' : estado, cuenta: estado === 'realizado' ? cuenta : null, medio: estado === 'realizado' ? medio : null,
-        concepto: concepto.trim(), categoria, asignacion, actividad: asignacion === 'actividad' ? actividad : null,
+        concepto: concepto.trim(), categoria: catNueva != null ? null : categoria, asignacion, actividad: asignacion === 'actividad' ? actividad : null,
+        categoriaPropuesta: catNueva != null ? catNueva.trim() : null, actividadPropuesta: actPropuesta || null,
         contraparte: contraparte.trim() || null, notas: notas.trim() || null, venceEl: estado === 'pendiente' && venceEl ? venceEl : null,
         pagadoCon: propio ? 'propio' : 'cuenta', reembolsoA: propio ? reembolsoA : null, origen,
       }, clave.current)
@@ -217,7 +235,7 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
   function otro() {
     setImporte(''); setEstado('realizado'); setCuenta(null); setMedio(null); setConcepto(''); setCategoria(null); setNoSe(false)
     setAsig(null); setAsigTocada(false); setActividad(null); setFechaReal(hoy); setVenceEl(''); setArchivos([])
-    setMas(false); setContraparte(''); setNotas(''); setError(null); setListo(null); setRecuperado(null); setReembolsoA(null); setOrigen('manual')
+    setMas(false); setContraparte(''); setNotas(''); setError(null); setListo(null); setRecuperado(null); setReembolsoA(null); setOrigen('manual'); setCatNueva(null); setActNueva(null)
     escribirBorrador(claveB, null)
     clave.current = nuevaClave()
     window.scrollTo(0, 0)
@@ -235,6 +253,11 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
           {listo.duplicado && <p className="fz-ayuda">Ya estaba guardado: no se duplicó.</p>}
           <div className="fz-fila__pills">{pastillasDe(op)}</div>
         </div>
+        {(op.categoriaPropuesta || op.actividadPropuesta) && (
+          <Aviso tono="ok">
+            Propusiste {[op.categoriaPropuesta && `la categoría «${op.categoriaPropuesta}»`, op.actividadPropuesta && `la obra «${op.actividadPropuesta}»`].filter(Boolean).join(' y ')}. Queda marcado para que administración lo revise y lo clasifique.
+          </Aviso>
+        )}
         {listo.avisoArchivos && <Aviso tono="aviso">El movimiento quedó registrado, pero el comprobante no se subió: {listo.avisoArchivos}</Aviso>}
         {op.evidencia === 'pendiente' && !listo.avisoArchivos && <Aviso tono="aviso">Quedó sin comprobante. Puedes subirlo después desde Pendientes; el importe ya no se puede cambiar desde ahí.</Aviso>}
         <div className="fz-acciones-fin">
@@ -249,7 +272,8 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
   /* ───────── formulario ───────── */
   const entra = tipo === 'entrada'
   const ayer = sumarDias(hoy, -1)
-  const avisoClasif = !categoria || !asig || asig === 'pendiente'
+  const actPropuestaVisible = asig === 'actividad' && actNueva != null
+  const avisoClasif = !categoria || !asig || asig === 'pendiente' || actPropuestaVisible
   return (
     <div className="fz-captura">
       <div className="fz-stack">
@@ -324,8 +348,15 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
                 {c.nombre}{c.restringida ? <Icono n="candado" chico /> : null}
               </Ficha>
             ))}
-            <Ficha punteada activa={noSe} onClick={() => elegirCategoria(null)}>No sé · que lo clasifique administración</Ficha>
+            <Ficha punteada activa={catNueva != null} onClick={proponerCategoria}><Icono n="mas" chico />Otra · escribirla</Ficha>
+            <Ficha punteada activa={noSe} onClick={() => { setCatNueva(null); elegirCategoria(null) }}>No sé · que lo clasifique administración</Ficha>
           </div>
+          {catNueva != null && (
+            <div className="fz-nuevo">
+              <input className="fz-input" value={catNueva} onChange={(e) => setCatNueva(e.target.value)} maxLength={60} placeholder={entra ? 'Ej. Venta de bases de licitación' : 'Ej. Grúa con canastilla'} aria-label="Categoría que propones" autoFocus />
+              <p className="fz-ayuda">Se guarda <b>pendiente de clasificar</b> con tu propuesta y se avisa a administración, que la da de alta o la cambia por una existente.</p>
+            </div>
+          )}
         </div>
 
         <div className="fz-campo">
@@ -337,24 +368,7 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
               ))}
           </div>
           {asig === 'actividad' && (
-            <>
-              {actividades.some((a) => a.tipo === 'obra') ? (
-                <div className="fz-grupo">
-                  <span className="fz-grupo__t">Obras</span>
-                  <div className="fz-chips">
-                    {actividades.filter((a) => a.tipo === 'obra').map((a) => <Ficha key={a.id} activa={actividad === a.id} onClick={() => setActividad(a.id)}>{a.nombre}</Ficha>)}
-                  </div>
-                </div>
-              ) : <p className="fz-ayuda fz-ayuda--aviso">Todavía no hay obras activas. Administración las da de alta en Finanzas → Obras y áreas.</p>}
-              {actividades.some((a) => a.tipo === 'area') && (
-                <div className="fz-grupo">
-                  <span className="fz-grupo__t">Áreas de soporte</span>
-                  <div className="fz-chips">
-                    {actividades.filter((a) => a.tipo === 'area').map((a) => <Ficha key={a.id} activa={actividad === a.id} onClick={() => setActividad(a.id)}>{a.nombre}</Ficha>)}
-                  </div>
-                </div>
-              )}
-            </>
+            <SelectorObra valor={actividad} propuesta={actNueva} alElegir={(id) => { setActividad(id); setActNueva(null) }} alProponer={(t) => { setActividad(null); setActNueva(t) }} />
           )}
           {asig === 'general' && <p className="fz-ayuda">Es de toda la empresa, no de una obra ni de un área en particular. Cuenta como {entra ? 'entrada' : 'gasto'} del periodo.</p>}
           {asig === 'pendiente' && <p className="fz-ayuda">Se guarda como pendiente de clasificar. Administración lo completa después.</p>}
@@ -400,10 +414,15 @@ export default function Captura({ tipoInicial, cuentaInicial = null }: { tipoIni
         <div className="fz-resumen">
           <b>{entra ? 'Entrada' : 'Gasto'} {fmt(totalOk ? total : 0)}</b>
           <span>{estado === 'pendiente' ? 'Pendiente' : estado === 'propio' ? `Por reembolsar a ${(equipo ?? []).find((x) => x.id === reembolsoA)?.nombre.split(' ')[0] ?? catalogo.usuario.nombre.split(' ')[0]}` : cuentas.find((c) => c.id === cuenta)?.nombre ?? 'Falta la cuenta'}</span>
-          {asig === 'actividad' && actividad != null && <span>{actividades.find((a) => a.id === actividad)?.nombre}</span>}
+          {asig === 'actividad' && actNueva == null && actividad != null && <span>{actividades.find((a) => a.id === actividad)?.nombre}</span>}
+          {actPropuestaVisible && actNueva?.trim() && <span>Obra nueva: {actNueva.trim()}</span>}
           <span>{fecha(fechaReal)}</span>
         </div>
-        {avisoClasif && <div className="fz-ayuda fz-ayuda--aviso">Se guardará como pendiente de clasificar ({!categoria ? 'sin categoría' : 'sin asignación'}).</div>}
+        {avisoClasif && (
+          <div className="fz-ayuda fz-ayuda--aviso">
+            Se guardará como pendiente de clasificar ({catNueva != null ? 'categoría propuesta' : !categoria ? 'sin categoría' : actPropuestaVisible ? 'obra propuesta' : 'sin asignación'}){catNueva != null || actPropuestaVisible ? '. Se avisa a administración.' : '.'}
+          </div>
+        )}
         {error && <Aviso tono="malo">{error}</Aviso>}
         <button type="button" className={`fz-btn fz-btn--bloque ${entra ? 'fz-btn--teal' : 'fz-btn--navy'}`} disabled={guardando} onClick={guardar}>
           {guardando ? 'Guardando…' : entra ? 'Guardar entrada' : 'Guardar gasto'}

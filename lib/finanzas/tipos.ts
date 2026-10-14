@@ -75,7 +75,19 @@ export type OperacionVista = {
   reembolsoA: Ref | null
   /** Solo en traspasos: de qué cuenta salió y a cuál entró. */
   traspaso: { de: string; a: string } | null
+  /** Lo que escribió quien capturó porque no encontró la categoría o la obra/área (MacAuto docs/63). Vacío si no hay propuesta. */
+  categoriaPropuesta: string
+  actividadPropuesta: string
+  /** Nació de una foto de ticket o de un plan sin clasificar y quien la capturó todavía la puede completar (MacAuto docs/68). */
+  porRevisar: boolean
+  /** Las operaciones del mismo ticket comparten este valor (TKT-…). */
+  grupoTicket: string
+  /** Pagos pactados (parciales o a plazos) y cómo van. null si no es un plan. */
+  calendario: CalendarioVista | null
 }
+
+export type CuotaVista = { numero: number; fecha: string | null; centavos: number; pagadoCentavos: number; faltaCentavos: number; estado: 'cubierta' | 'parcial' | 'vencida' | 'proxima' | 'futura' | 'sin_fecha'; nota: string }
+export type CalendarioVista = { cuotas: CuotaVista[]; proxima: { fecha: string | null; faltaCentavos: number; numero: number } | null; vencidas: number }
 
 export type MovimientoVista = {
   id: number
@@ -107,7 +119,7 @@ export type DetalleOperacion = {
   movimientos: MovimientoVista[]
   comprobantes: ComprobanteVista[]
   bitacora: BitacoraVista[]
-  acciones: { liquidar: boolean; adjuntar: boolean; revisar: boolean; corregir: boolean }
+  acciones: { liquidar: boolean; adjuntar: boolean; revisar: boolean; corregir: boolean; completar: boolean; descartar: boolean }
 }
 
 export type ListaOperaciones = {
@@ -125,12 +137,14 @@ export type Pendientes = {
   porCobrarOPagar: OperacionVista[]
   /** Gastos que alguien pagó de su bolsa y todavía no se le devuelven (docs/62). */
   porReembolsar: OperacionVista[]
+  /** Tickets y planes que quien los capturó tiene que completar (los suyos; quien corrige ve los de todos). */
+  porCompletar: OperacionVista[]
 }
 
 export type Saldos = { cuentas: { cuenta: CuentaVista; saldoInicialCentavos: number; saldoCentavos: number }[]; totalActivasCentavos: number }
 
 export type Resumen = {
-  conteos: { sinComprobante: number; porRevisar: number; sinClasificar: number; porCobrarOPagar: number; porReembolsar: number }
+  conteos: { sinComprobante: number; porRevisar: number; sinClasificar: number; porCobrarOPagar: number; porReembolsar: number; porCompletar: number }
   ultimos: OperacionVista[]
   saldoTotalCentavos: number | null
   configurado: { roles: boolean; catalogos: boolean; cuentas: boolean; fechaCorte: boolean }
@@ -248,3 +262,37 @@ export type ResultadoVoz = {
 
 /** Cuentas del panel con sus sesiones abiertas (Configuración → si se pierde un teléfono, docs/61). */
 export type PersonaConSesiones = { id: number; nombre: string; email: string; sesiones: number; esSuperadmin: boolean }
+
+/* ───────── foto de ticket y pagos a plazos (MacAuto docs/68) ───────── */
+
+export type ResultadoTicket = {
+  grupo: string
+  comercio: string
+  totalCentavos: number
+  operaciones: OperacionVista[]
+  dudas: string[]
+  duplicado: boolean
+}
+
+/** Un pago del plan tal como viaja entre la pantalla y el servidor (importe en pesos, como lo escribe la persona). */
+export type CuotaEntrada = { fecha: string | null; importe: string; yaOcurrio: boolean; nota: string }
+
+export type BorradorPlanVista = {
+  tipo: 'entrada' | 'gasto'
+  total: string
+  concepto: string
+  contraparte: string
+  categoria: number | null
+  /** La obra o área que se reconoció en el texto (si fue una sola). */
+  actividad: number | null
+  cuotas: CuotaEntrada[]
+}
+
+export type ResultadoInterpretacionPlan = {
+  texto: string
+  borrador: BorradorPlanVista
+  /** Si la obra mencionada coincide con varias, para elegir. */
+  obrasCandidatas: ObraRef[]
+  obraTexto: string | null
+  dudas: string[]
+}

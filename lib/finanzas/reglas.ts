@@ -252,3 +252,294 @@ export function armarBorradorVoz(i: InterpretacionVoz, cat: CatalogoParaVoz, hoy
     dudas: [...new Set(dudas)],
   }
 }
+
+/* ───────────────────────────── propuestas de categoría u obra (MacAuto docs/63) ───────────────────────────── */
+
+/** «  Grúas y  Arrastres » → «gruas y arrastres»: para comparar nombres sin acentos, mayúsculas ni espacios de más. */
+export function normalizarNombre(s: unknown): string {
+  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * ¿Lo que alguien escribió como «categoría nueva» ya existe en la lista?
+ * Compara sin acentos ni mayúsculas y tolera una «s» final de diferencia
+ * («Grúa» = «Grúas»). Si existe, se usa esa en vez de crear un pendiente.
+ */
+export function coincidenciaDeNombre<T extends { nombre: string }>(texto: unknown, lista: T[]): T | null {
+  const t = normalizarNombre(texto)
+  if (!t) return null
+  const sinS = (x: string) => x.replace(/s$/, '')
+  return lista.find((x) => normalizarNombre(x.nombre) === t) ?? lista.find((x) => sinS(normalizarNombre(x.nombre)) === sinS(t)) ?? null
+}
+
+/** Texto que escribe la persona para una propuesta o un auto nuevo: sin espacios de más y con tope de largo. */
+export function textoPropuesta(s: unknown, max = 60): string {
+  return String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+}
+
+
+/* ───────────────────────────── foto de ticket (MacAuto docs/68) ───────────────────────────── */
+
+/**
+ * Reparte `totalCentavos` en proporción a `partes` (centavos, todos > 0) y
+ * cuadra al centavo: cada parte recibe su piso y los centavos que sobran van a
+ * las de mayor fracción (método del mayor residuo). Sirve para que el IVA, un
+ * descuento o un redondeo del ticket queden repartidos entre los conceptos y la
+ * suma de los registros sea exactamente lo que salió de la caja.
+ */
+export function repartirProporcional(totalCentavos: number, partes: number[]): number[] {
+  const suma = partes.reduce((a, p) => a + p, 0)
+  if (!partes.length || suma <= 0) return partes.map(() => 0)
+  const exactos = partes.map((p) => (totalCentavos * p) / suma)
+  const pisos = exactos.map((x) => Math.floor(x))
+  let sobran = totalCentavos - pisos.reduce((a, p) => a + p, 0)
+  const orden = exactos.map((x, i) => ({ i, f: x - Math.floor(x) })).sort((a, b) => b.f - a.f || a.i - b.i)
+  for (let k = 0; sobran > 0 && k < orden.length; k++, sobran--) pisos[orden[k].i] += 1
+  return pisos
+}
+
+export type InterpretacionTicket = {
+  comercio?: string | null
+  fecha?: string | null
+  total?: number | string | null
+  conceptos?: { descripcion?: string | null; cantidad?: number | string | null; importe?: number | string | null; categoriaId?: number | string | null }[] | null
+  dudas?: string[] | null
+}
+
+export type RenglonTicket = { concepto: string; centavos: number; leidoCentavos: number; categoria: number | null }
+
+export const MAX_RENGLONES_TICKET = 30
+
+/**
+ * Lo que leyó la IA del ticket → renglones listos para guardar, uno por
+ * concepto. Nunca inventa: una categoría que no existe o es del tipo
+ * equivocado se descarta; una fecha imposible se cambia por hoy; si los
+ * conceptos no suman el total cobrado, la diferencia se reparte en
+ * proporción (decisión de Jano, 13-oct-2026) y queda anotada en `dudas`.
+ * Devuelve `error` cuando no hay nada que guardar.
+ */
+export function armarTicket(
+  i: InterpretacionTicket,
+  cat: { categorias: { id: number; tipo: 'entrada' | 'gasto' }[] },
+  tipo: 'entrada' | 'gasto',
+  hoy: string,
+  corte: string | null,
+): { comercio: string; fechaReal: string; totalCentavos: number; renglones: RenglonTicket[]; dudas: string[]; error: string | null } {
+  const dudas: string[] = []
+  for (const d of i.dudas ?? []) if (typeof d === 'string' && d.trim()) dudas.push(d.trim().slice(0, 160))
+  const comercio = textoPropuesta(i.comercio, 120)
+
+  type Linea = { concepto: string; centavos: number; categoria: number | null }
+  const positivas: Linea[] = []
+  let negativas = 0
+  ;(i.conceptos ?? []).forEach((c, k) => {
+    const imp = num(c?.importe)
+    if (imp == null || imp === 0 || Math.abs(imp) >= 1e9) return
+    const centavos = Math.round(imp * 100)
+    if (centavos < 0) {
+      negativas += centavos
+      return
+    }
+    const cantidad = num(c?.cantidad)
+    const desc = textoPropuesta(c?.descripcion, 140) || `Concepto ${k + 1} del ticket`
+    const catId = num(c?.categoriaId)
+    const categoria = catId != null && cat.categorias.some((x) => x.id === catId && x.tipo === tipo) ? catId : null
+    positivas.push({ concepto: `${cantidad && cantidad > 1 ? `${cantidad} × ` : ''}${desc}`.slice(0, 160), centavos, categoria })
+  })
+  if (!positivas.length) return { comercio, fechaReal: hoy, totalCentavos: 0, renglones: [], dudas, error: 'No pude leer los conceptos del ticket. Toma la foto de nuevo, de frente y con buena luz, o regístralo a mano.' }
+
+  /* Más de 30 conceptos: los últimos se juntan en uno (una nota de remisión larga no debe producir 80 registros). */
+  if (positivas.length > MAX_RENGLONES_TICKET) {
+    const resto = positivas.splice(MAX_RENGLONES_TICKET - 1)
+    positivas.push({ concepto: `Otros ${resto.length} conceptos del ticket`, centavos: resto.reduce((a, x) => a + x.centavos, 0), categoria: null })
+    dudas.push(`El ticket tiene más de ${MAX_RENGLONES_TICKET} conceptos: los últimos ${resto.length} quedaron juntos en uno.`)
+  }
+
+  const sumaPositivas = positivas.reduce((a, x) => a + x.centavos, 0)
+  const totalLeido = num(i.total)
+  let total = totalLeido != null && totalLeido > 0 && totalLeido < 1e9 ? Math.round(totalLeido * 100) : sumaPositivas + negativas
+  if (total <= 0) total = sumaPositivas
+  const centavos = total === sumaPositivas ? positivas.map((x) => x.centavos) : repartirProporcional(total, positivas.map((x) => x.centavos))
+  if (total !== sumaPositivas) {
+    const dif = total - sumaPositivas
+    if (Math.abs(dif) > sumaPositivas * 0.25) dudas.push(`Los conceptos suman ${formatoMXN(sumaPositivas, true)} y el total del ticket es ${formatoMXN(total, true)}: revisa que se hayan leído bien.`)
+    else dudas.push(`Se repartieron ${formatoMXN(Math.abs(dif), true)} ${dif > 0 ? '(IVA o redondeo)' : '(descuento)'} entre los conceptos para que sumen el total del ticket.`)
+  }
+
+  let fechaReal = hoy
+  if (typeof i.fecha === 'string' && i.fecha.trim()) {
+    if (esFechaValida(i.fecha) && revisarFechaReal(i.fecha, hoy, corte) === null) fechaReal = i.fecha
+    else dudas.push(`La fecha del ticket (${i.fecha.slice(0, 20)}) no se puede usar; quedó la de hoy.`)
+  }
+
+  return {
+    comercio,
+    fechaReal,
+    totalCentavos: total,
+    renglones: positivas.map((x, k) => ({ concepto: x.concepto, centavos: centavos[k], leidoCentavos: x.centavos, categoria: x.categoria })),
+    dudas: [...new Set(dudas)],
+    error: null,
+  }
+}
+
+/* ───────────────────────────── pagos parciales y a plazos (MacAuto docs/68) ───────────────────────────── */
+
+/** Un pago del acuerdo: con fecha o «sin fecha» (por ejemplo, «al terminar la obra»). `yaOcurrio`: se cobró o pagó al registrar. */
+export type CuotaPlan = { fecha: string | null; centavos: number; yaOcurrio: boolean; nota: string }
+
+export type InterpretacionPlan = {
+  tipo?: string | null
+  total?: number | string | null
+  concepto?: string | null
+  contraparte?: string | null
+  categoriaId?: number | string | null
+  /** La obra mencionada, tal cual la dijo la persona (ELGO). */
+  obraTexto?: string | null
+  pagos?: { fecha?: string | null; importe?: number | string | null; yaOcurrio?: boolean | null; nota?: string | null }[] | null
+  dudas?: string[] | null
+}
+
+export type BorradorPlan = {
+  tipo: 'entrada' | 'gasto'
+  totalCentavos: number
+  concepto: string
+  contraparte: string
+  categoria: number | null
+  obraTexto: string | null
+  cuotas: CuotaPlan[]
+}
+
+export const MAX_CUOTAS = 60
+
+/** Orden del calendario: primero lo ya ocurrido, luego por fecha; lo que no tiene fecha, al final. */
+export function ordenarCuotas<T extends { fecha: string | null; yaOcurrio?: boolean }>(cuotas: T[]): T[] {
+  return [...cuotas].sort((a, b) => Number(Boolean(b.yaOcurrio)) - Number(Boolean(a.yaOcurrio)) || (a.fecha ?? '9999') .localeCompare(b.fecha ?? '9999'))
+}
+
+/**
+ * Lo que entendió la IA de «la instalación es de 300 mil, nos dieron 90 de
+ * anticipo y el resto en 3 estimaciones» → un borrador de plan que la persona ve y
+ * confirma. Nunca inventa ids; si los pagos no suman el total, agrega un pago
+ * sin fecha por el saldo (o toma la suma, si se pasan) y lo anota en dudas.
+ */
+export function armarPlan(
+  i: InterpretacionPlan,
+  cat: { categorias: { id: number; tipo: 'entrada' | 'gasto' }[] },
+  hoy: string,
+  corte: string | null,
+): { borrador: BorradorPlan; dudas: string[] } {
+  const dudas: string[] = []
+  for (const d of i.dudas ?? []) if (typeof d === 'string' && d.trim()) dudas.push(d.trim().slice(0, 160))
+  const tipo: 'entrada' | 'gasto' = i.tipo === 'entrada' ? 'entrada' : 'gasto'
+  if (i.tipo !== 'entrada' && i.tipo !== 'gasto') dudas.push('No quedó claro si es dinero que entra o que sale; quedó como gasto.')
+
+  const cuotas: CuotaPlan[] = []
+  for (const p of (i.pagos ?? []).slice(0, MAX_CUOTAS)) {
+    const imp = num(p?.importe)
+    if (imp == null || imp <= 0 || imp >= 1e9) continue
+    const centavos = Math.round(imp * 100)
+    let fecha = typeof p?.fecha === 'string' && esFechaValida(p.fecha) ? p.fecha : null
+    if (typeof p?.fecha === 'string' && p.fecha.trim() && !fecha) dudas.push(`Una fecha («${p.fecha.slice(0, 20)}») no se entendió; ese pago quedó sin fecha.`)
+    let yaOcurrio = Boolean(p?.yaOcurrio)
+    if (yaOcurrio && fecha && fecha > hoy) yaOcurrio = false
+    if (yaOcurrio && !fecha) fecha = hoy
+    if (yaOcurrio && fecha && corte && fecha < corte) {
+      dudas.push(`Un pago ya hecho tiene fecha anterior al corte (${corte}); quedó con fecha de hoy.`)
+      fecha = hoy
+    }
+    if (!yaOcurrio && fecha && fecha <= hoy) {
+      /* Una fecha pasada que no se ha cobrado ni pagado: es un pago vencido. Se conserva y se avisa. */
+      dudas.push(`El pago del ${fecha} ya pasó y no dice que se haya hecho: quedó como vencido.`)
+    }
+    cuotas.push({ fecha, centavos, yaOcurrio, nota: textoPropuesta(p?.nota, 80) })
+  }
+  if ((i.pagos ?? []).length > MAX_CUOTAS) dudas.push(`A lo más ${MAX_CUOTAS} pagos por acuerdo.`)
+
+  const suma = cuotas.reduce((a, c) => a + c.centavos, 0)
+  const totalLeido = num(i.total)
+  let total = totalLeido != null && totalLeido > 0 && totalLeido < 1e9 ? Math.round(totalLeido * 100) : suma
+  if (!cuotas.length && total > 0) {
+    cuotas.push({ fecha: null, centavos: total, yaOcurrio: false, nota: '' })
+    dudas.push('No se entendieron los pagos: quedó un solo pago sin fecha por el total.')
+  } else if (suma < total) {
+    cuotas.push({ fecha: null, centavos: total - suma, yaOcurrio: false, nota: 'Saldo sin fecha' })
+    dudas.push(`Los pagos suman ${formatoMXN(suma, true)} de ${formatoMXN(total, true)}: el saldo quedó como un pago sin fecha.`)
+  } else if (suma > total) {
+    dudas.push(`Los pagos suman ${formatoMXN(suma, true)}, más que el total dicho (${formatoMXN(total, true)}): se tomó la suma de los pagos.`)
+    total = suma
+  }
+  if (!total) dudas.push('No se entendió el importe total.')
+
+  const catId = num(i.categoriaId)
+  let categoria: number | null = null
+  if (catId != null) {
+    if (cat.categorias.some((c) => c.id === catId && c.tipo === tipo)) categoria = catId
+    else dudas.push('La categoría no cuadra con el tipo; elígela.')
+  }
+  const concepto = textoPropuesta(i.concepto, 160)
+  if (!concepto) dudas.push('Falta un concepto breve.')
+  return {
+    borrador: {
+      tipo,
+      totalCentavos: total,
+      concepto,
+      contraparte: textoPropuesta(i.contraparte, 160),
+      categoria,
+      obraTexto: textoPropuesta(i.obraTexto, 60) || null,
+      cuotas: ordenarCuotas(cuotas),
+    },
+    dudas: [...new Set(dudas)],
+  }
+}
+
+/** ¿El plan que confirmó la persona es guardable? Devuelve el mensaje de error o null. */
+export function revisarPlan(totalCentavos: number, cuotas: CuotaPlan[], hoy: string, corte: string | null): string | null {
+  if (!Number.isInteger(totalCentavos) || totalCentavos <= 0) return 'Escribe el importe total del acuerdo.'
+  if (!cuotas.length) return 'Agrega al menos un pago.'
+  if (cuotas.length > MAX_CUOTAS) return `A lo más ${MAX_CUOTAS} pagos por acuerdo.`
+  for (const c of cuotas) {
+    if (!Number.isInteger(c.centavos) || c.centavos <= 0) return 'Cada pago debe llevar un importe mayor a cero.'
+    if (c.fecha != null && !esFechaValida(c.fecha)) return 'Una de las fechas no es válida.'
+    if (c.yaOcurrio) {
+      if (!c.fecha) return 'Un pago ya hecho necesita fecha.'
+      const e = revisarFechaReal(c.fecha, hoy, corte)
+      if (e) return `Pago ya hecho: ${e}`
+    }
+  }
+  const suma = cuotas.reduce((a, c) => a + c.centavos, 0)
+  if (suma !== totalCentavos) return `Los pagos suman ${formatoMXN(suma, true)} y el total es ${formatoMXN(totalCentavos, true)}. Deben coincidir al centavo.`
+  if (cuotas.every((c) => c.yaOcurrio)) return 'Todo ya se pagó: regístralo como una entrada o un gasto normal.'
+  return null
+}
+
+export type EstadoCuota = 'cubierta' | 'parcial' | 'vencida' | 'proxima' | 'futura' | 'sin_fecha'
+
+/**
+ * Cómo va un calendario de pagos: lo cobrado/pagado se aplica a las cuotas en
+ * orden (las de fecha más antigua primero; las sin fecha al final). Así no
+ * importa si el cliente pagó $40,000 en vez de $50,000: la siguiente cuota
+ * muestra lo que le falta. `proxima` es la primera cuota con saldo.
+ */
+export function estadoCalendario(cuotas: { fecha: string | null; centavos: number; nota?: string | null }[], pagadoCentavos: number, hoy: string) {
+  let resto = Math.max(0, pagadoCentavos)
+  const orden = cuotas.map((c, i) => ({ c, i })).sort((a, b) => (a.c.fecha ?? '9999').localeCompare(b.c.fecha ?? '9999') || a.i - b.i)
+  let proxima: { fecha: string | null; faltaCentavos: number; numero: number } | null = null
+  const filas = orden.map(({ c }, k) => {
+    const aplicado = Math.min(resto, c.centavos)
+    resto -= aplicado
+    const falta = c.centavos - aplicado
+    let estado: EstadoCuota
+    if (falta === 0) estado = 'cubierta'
+    else if (aplicado > 0) estado = 'parcial'
+    else if (!c.fecha) estado = 'sin_fecha'
+    else if (c.fecha < hoy) estado = 'vencida'
+    else estado = 'futura'
+    if (falta > 0 && !proxima) {
+      proxima = { fecha: c.fecha, faltaCentavos: falta, numero: k + 1 }
+      if (estado === 'futura') estado = 'proxima'
+    }
+    if (estado === 'parcial' && c.fecha && c.fecha < hoy) estado = 'vencida'
+    return { numero: k + 1, fecha: c.fecha, centavos: c.centavos, pagadoCentavos: aplicado, faltaCentavos: falta, estado, nota: c.nota ?? '' }
+  })
+  return { cuotas: filas, proxima: proxima as { fecha: string | null; faltaCentavos: number; numero: number } | null, vencidas: filas.filter((f) => f.estado === 'vencida').length }
+}
