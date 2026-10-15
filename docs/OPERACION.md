@@ -20,7 +20,8 @@ Todo lo demás es igual: cobros y pagos parciales, comprobantes privados, correc
 
 | Pieza | Dónde | Variable en Vercel |
 |---|---|---|
-| App | Vercel, proyecto `elgo-finanzas` (equipo Jano's Portfolio), rama `main` = producción. URL: https://elgo-finanzas.vercel.app | — |
+| App | Vercel, proyecto `elgo-finanzas` (equipo Jano's Portfolio), rama `main` = producción. **https://elgo-constructora.com** (portada pública) y **/admin** (aplicaciones). La dirección anterior elgo-finanzas.vercel.app redirige al dominio. | — |
+| Dominio | `elgo-constructora.com` en Cloudflare (cuenta de Jano). DNS: `A @ 216.150.1.1` y `CNAME www → 6f78c542b3ea708c.vercel-dns-016.com`, ambos **DNS only** (sin proxy: el certificado lo emite Vercel). | `NEXT_PUBLIC_SITE_URL=https://elgo-constructora.com` |
 | Código | GitHub `JanoM91/ELGO-Constructora` (público: nunca subir datos ni secretos) | — |
 | Base de datos | Supabase `elgo-finanzas` (ref `thmpxlacrftqynwnctmu`, us-east-2), organización Exkalibur Consulting | `DATABASE_URL` (Sensitive, solo Production) |
 | Secreto de sesiones | — | `PAYLOAD_SECRET` (Sensitive), nuevo: `openssl rand -hex 32` |

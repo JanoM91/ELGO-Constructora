@@ -2,9 +2,21 @@ import { withPayload } from '@payloadcms/next/withPayload'
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* No hay sitio público: la raíz lleva directo a Finanzas (si no hay sesión, Payload pide la contraseña). */
+  /*
+   * La raíz es la página pública de ELGO (app/(frontend)); el panel y todas
+   * las aplicaciones del equipo viven en /admin.
+   * La dirección anterior de Vercel lleva al dominio propio (las direcciones
+   * de cada despliegue, elgo-finanzas-<id>-…vercel.app, no se tocan).
+   */
   async redirects() {
-    return [{ source: '/', destination: '/admin/finanzas', permanent: false }]
+    return [
+      {
+        source: '/:ruta*',
+        has: [{ type: 'host', value: 'elgo-finanzas.vercel.app' }],
+        destination: 'https://elgo-constructora.com/:ruta*',
+        permanent: false,
+      },
+    ]
   },
 }
 

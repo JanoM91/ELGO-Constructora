@@ -12,7 +12,8 @@ Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (com
 - Comprobantes en un almacén **privado** de Vercel Blob (`FINANZAS_BLOB_READ_WRITE_TOKEN`).
 - IA con **Claude** (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`) en `lib/finanzas/lectura.ts` y la nota de voz: interpreta la **nota de voz**, lee la **foto de ticket** y arma los **pagos a plazos**. La voz siempre pasa por el **dictado del navegador** (no se sube audio). Sin llave, esas tres responden 503 y lo demás funciona.
 - Avisos por correo (`lib/notify.ts`, Resend: `RESEND_API_KEY`, `LEADS_FROM_EMAIL`) cuando alguien propone una categoría u obra que no existe. Sin llaves no truena: el pendiente se ve en Pendientes.
-- Deploy: Vercel (producción = rama `main`).
+- Deploy: Vercel (producción = rama `main`). **Dominio: https://elgo-constructora.com** (DNS en Cloudflare, registros «DNS only»; `www` redirige a la raíz; `elgo-finanzas.vercel.app` redirige al dominio en `next.config.mjs`).
+- **Estructura del sitio**: `/` = página pública de ELGO (`app/(frontend)`, textos en `lib/landing.ts`); **todas las aplicaciones del equipo viven en `/admin`** (Finanzas hoy; agente cotizador y control de inventario después).
 - Una instalación (base, Vercel y Blob propios) por empresa. Ver «Pendiente» en `docs/OPERACION.md` sobre multiempresa.
 
 ## Reglas heredadas (no romper)
