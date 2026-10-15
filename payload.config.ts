@@ -35,7 +35,10 @@ export default buildConfig({
     avatar: 'default',
     meta: {
       titleSuffix: ` — ${site.brand.name}`,
-      icons: [{ rel: 'icon', type: 'image/png', url: '/finanzas/favicon-64.png' }],
+      icons: [
+        { rel: 'icon', type: 'image/png', url: '/finanzas/favicon-64.png' },
+        { rel: 'apple-touch-icon', type: 'image/png', url: '/finanzas/apple-icon.png' },
+      ],
     },
     components: {
       graphics: {

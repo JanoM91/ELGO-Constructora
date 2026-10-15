@@ -115,12 +115,63 @@ export function manifestFinanzas() {
     display: 'standalone',
     background_color: COLOR_APP,
     theme_color: COLOR_APP,
-    categories: ['business', 'finance', 'medical'],
+    categories: ['business', 'finance'],
     icons: [
       { src: ICONOS.chico, sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: ICONOS.grande, sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: ICONOS.chicoMaskable, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
       { src: ICONOS.grandeMaskable, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Plataforma ELGO: el mismo icono en TODO el sitio.
+ *
+ * Finanzas tiene su propia ficha (abre directo en Finanzas). En el resto —la
+ * portada, /admin, el inicio de sesión directo y las apps que vengan— se usa
+ * esta ficha general: icono de ELGO, nombre «ELGO» y abre en /admin, donde
+ * viven todas las aplicaciones. Así, se agregue desde donde se agregue, el
+ * teléfono muestra el logotipo de ELGO y no una captura de la página.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+export const RUTA_MANIFEST_PLATAFORMA = '/manifest.webmanifest'
+
+export function metadatosPlataforma(): Metadata {
+  return {
+    applicationName: site.brand.name,
+    manifest: RUTA_MANIFEST_PLATAFORMA,
+    appleWebApp: { capable: true, title: site.brand.name, statusBarStyle: 'default' },
+    icons: {
+      icon: [
+        { url: '/favicon.ico', sizes: 'any' },
+        { url: ICONOS.favicon, type: 'image/png', sizes: '64x64' },
+      ],
+      apple: [{ url: ICONOS.apple, type: 'image/png', sizes: '180x180' }],
+    },
+    other: { 'apple-mobile-web-app-capable': 'yes' },
+  }
+}
+
+export const viewportPlataforma: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: COLOR_APP,
+}
+
+export function manifestPlataforma() {
+  return {
+    id: '/admin',
+    name: site.brand.name,
+    short_name: site.brand.name,
+    description: `Plataforma de ${site.brand.name}: Finanzas y las aplicaciones del equipo.`,
+    lang: 'es-MX',
+    start_url: '/admin',
+    scope: '/',
+    display: 'standalone',
+    background_color: COLOR_APP,
+    theme_color: COLOR_APP,
+    categories: ['business', 'productivity'],
+    icons: manifestFinanzas().icons,
   }
 }

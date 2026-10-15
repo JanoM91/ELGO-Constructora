@@ -3,6 +3,7 @@
 import type { Metadata, Viewport } from 'next'
 import React from 'react'
 
+import { metadatosPlataforma } from '../../lib/finanzas/appMovil'
 import { landing } from '../../lib/landing'
 import { site } from '../../lib/site'
 import './landing.css'
@@ -11,10 +12,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title: `${site.brand.name} · ${landing.nombreCompleto}`,
   description: `${landing.titulo}. ${landing.ciudad}.`,
-  icons: {
-    icon: [{ url: '/finanzas/favicon-64.png', type: 'image/png', sizes: '64x64' }],
-    apple: [{ url: '/finanzas/apple-icon.png', sizes: '180x180' }],
-  },
+  /* Icono, manifest y nombre al agregarla a la pantalla de inicio (lib/finanzas/appMovil.ts). */
+  ...metadatosPlataforma(),
   openGraph: {
     title: `${site.brand.name} · ${landing.nombreCompleto}`,
     description: `${landing.titulo}. ${landing.ciudad}.`,
