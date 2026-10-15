@@ -12,7 +12,7 @@
 | Al elegir la categoría | Proponía su área | Los conceptos de obra piden **elegir la obra** (si solo hay una activa, queda elegida); los de soporte van a su área. |
 | Roles sugeridos | Dueño, Administración, Médico veterinario, Recepción | **Dueño**, **Administración**, **Compras** (registra y paga compras de todas las obras y revisa comprobantes; sin nómina, saldos, resultado ni mover dinero) y **Residente de obra** (solo captura desde el celular y ve lo suyo). Para que un residente vea su obra completa: duplica el rol y elige la obra en «Obras y áreas de su alcance». |
 | Nota de voz | Vocabulario de clínica | Vocabulario de obra (estimaciones, raya, materiales); propone la obra por nombre, lugar, cliente o clave, y nunca la adivina. |
-| Marca | Verde pino y menta | Azul marino `#13294b`, negro, grises y fondo blanco. Logotipo **provisional** recreado de la papelería (tres trazos y ELGO). |
+| Marca | Verde pino y menta | **Grises y café** con fondo blanco (gris carbón `#2e2c2a`, café `#6b4a33`), desde el 14-oct-2026. **Logotipo oficial** de ELGO (tres trazos grises) vectorizado. |
 
 Todo lo demás es igual: cobros y pagos parciales, comprobantes privados, corrección y anulación con bitácora, nómina restringida, saldos, traspasos, fondos a cargo de empleados (útil para el dinero que maneja cada residente), gastos «de mi bolsa» con reembolso, sesiones de 7 días y «Si se pierde un teléfono».
 
@@ -71,7 +71,7 @@ Verificación (local): `test:finanzas` 66/66; integración 44/44 + 38/38 (propue
 ## 7. Pendiente
 
 - **Producción (12-oct-2026)**: publicada en https://elgo-finanzas.vercel.app; las 2 migraciones se aplicaron solas (18 tablas, todas con RLS, dueño `payload_app`). `FINANZAS_BLOB_READ_WRITE_TOKEN` ya agregado. Falta `ANTHROPIC_API_KEY` (nota de voz, foto de ticket y pagos a plazos) y, opcional, Resend para avisos.
-- **Logotipo oficial** en vector: reemplazar `public/logo-*.png` y volver a correr `scripts/iconos-finanzas/generar-iconos.py`.
+- **Tipografía de ELGO**: la palabra «ELGO» bajo el isotipo usa Inter Display ExtraBold; si ELGO tiene su tipografía o el archivo con texto, cambiarlo en `scripts/marca-elgo/generar-logos.py`.
 - **Multiempresa**: en la sesión de definición se acordó separar empresas desde el día 1. Esta réplica sigue el modelo de Orthopedic Vet's (una instalación por empresa, con base propia), que aísla bien los datos pero no comparte una sola base. Decidir antes de vender a otra constructora.
 - **Obra pública a detalle** (siguiente iteración): estimaciones con amortización de anticipo, retenciones (5 al millar, fondo de garantía) y facturas CFDI ligadas al cobro. Hoy una estimación se registra por su importe neto cobrado.
 - Validar con ELGO: catálogo de categorías, si «Raya y destajos de obra» debe ser restringida, y quién recibe material y registra pagos.

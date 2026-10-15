@@ -87,8 +87,8 @@ export default function AppFinanzas({ catalogo, ruta, query, rutaAdmin, soloCapt
           <header className="fz-cabecera">
             <Link href={base} className="fz-marca" aria-label={`${marca.nombre} Finanzas: ir al inicio`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={marca.wordmark} alt={marca.nombre} />
-              <span>finanzas</span>
+              <img src={marca.wordmark} alt="" aria-hidden="true" />
+              <span><b>{marca.nombre}</b> finanzas</span>
             </Link>
             <span className="fz-cabecera__quien">
               <span className="fz-avatar" title={quien} aria-label={quien} role="img">{iniciales(catalogo.usuario.nombre)}</span>

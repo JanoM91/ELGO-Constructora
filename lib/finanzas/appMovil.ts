@@ -29,7 +29,7 @@ import { site } from '../site'
  */
 
 /** Primario oscuro de la marca: barra de estado del teléfono y fondo de la pantalla de arranque. */
-export const COLOR_APP = '#13294b'
+export const COLOR_APP = '#2e2c2a'
 
 export const RUTA_MANIFEST = '/finanzas/manifest.webmanifest'
 
@@ -76,7 +76,7 @@ export function metadatosFinanzas(): Metadata {
       capable: true,
       title: NOMBRE_CORTO,
       /* `default`: la página empieza debajo de la barra de estado y esa barra
-         toma el theme-color (navy). Con `black-translucent` la página se
+         toma el theme-color (gris carbón). Con `black-translucent` la página se
          metería debajo de la hora y la batería, y el panel completo (encabezado
          blanco) se vería mal. */
       statusBarStyle: 'default',

@@ -8,7 +8,7 @@ import { site } from '../../lib/site'
  * El menú de fábrica de Payload no muestra ninguna marca: empieza directo con
  * la lista de colecciones. Este bloque va antes de esa lista (se registra en
  * payload.config.ts como `admin.components.beforeNavLinks`) y pone el isotipo
- * en gris claro y blanco sobre el fondo azul marino del menú, con el nombre de la empresa.
+ * oficial en gris claro sobre el fondo gris carbón del menú, con el nombre de la empresa.
  *
  * Los estilos viven en app/(payload)/custom.css (clases `mx-marca*`).
  */

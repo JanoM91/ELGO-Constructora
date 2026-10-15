@@ -35,25 +35,29 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 /* ──────────────────────────────────────────────────────────────────────────
- * 1-A · Tokens de marca ELGO: azul marino, negro, grises y fondo blanco
- *       (gris del logotipo #c9cdd3 sobre fondos oscuros).
+ * 1-A · Tokens de marca ELGO: grises cálidos y café, fondo blanco
+ *       (oct-2026, con el logotipo oficial gris #626262). Gris carbón para
+ *       encabezados y menú; café para botones y selección.
  *       Los nombres --mx-navy / --mx-teal se heredan de MacAuto: «navy» es el
  *       color primario oscuro y «teal» el acento, sea cual sea su tono.
  * ────────────────────────────────────────────────────────────────────────── */
 :root {
-  --mx-navy: #13294b;
-  --mx-navy-dark: #0b1a33;
-  --mx-navy-light: #1f3a63;
-  --mx-teal: #3b5f8a;
-  --mx-teal-dark: #2c4a6d;
-  --mx-teal-light: #c9cdd3;
-  --mx-teal-text: #24456f; /* azul marino legible sobre blanco (≈9:1) */
-  --mx-teal-soft: #edf1f6;
-  --mx-ink: #111317;
-  --mx-muted: #5b616b;
-  --mx-sand: #f6f7f9;
-  --mx-sand-dark: #eceef2;
-  --mx-line: #dde1e7;
+  --mx-navy: #6b4a33; /* café: color primario (botones, selección) */
+  --mx-navy-dark: #523826;
+  --mx-navy-light: #86624a;
+  --mx-carbon: #2e2c2a; /* gris carbón: encabezados, menú lateral, acceso */
+  --mx-carbon-dark: #1f1e1c;
+  --mx-carbon-light: #45423e;
+  --mx-teal: #8c6849; /* café claro: acento, subrayados, foco */
+  --mx-teal-dark: #73543a;
+  --mx-teal-light: #d9d4ce; /* gris claro del logotipo sobre fondos oscuros */
+  --mx-teal-text: #6e4b31; /* café legible sobre blanco (≈8:1) */
+  --mx-teal-soft: #f4eee8;
+  --mx-ink: #1d1b19;
+  --mx-muted: #5f5a55;
+  --mx-sand: #f7f6f4;
+  --mx-sand-dark: #eeebe7;
+  --mx-line: #e0dbd5;
   --mx-amber: #fbbf24;
   --mx-amber-soft: #fef6e0;
   --mx-offer: #e63946;
@@ -64,8 +68,8 @@
   --mx-radius-panel: 28px;
   --mx-radius-pill: 999px;
   --mx-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --mx-shadow-soft: 0 14px 34px rgba(10, 20, 38, 0.08);
-  --mx-shadow-lift: 0 26px 60px rgba(10, 20, 38, 0.14);
+  --mx-shadow-soft: 0 14px 34px rgba(29, 27, 25, 0.08);
+  --mx-shadow-lift: 0 26px 60px rgba(29, 27, 25, 0.14);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -78,46 +82,46 @@
 :root,
 html[data-theme='light'] {
   --theme-elevation-0: #ffffff;
-  --theme-elevation-50: #f7f7f8;
-  --theme-elevation-100: #f0f1f3;
-  --theme-elevation-150: #e7e9ec;
-  --theme-elevation-200: #dcdfe3;
-  --theme-elevation-250: #cfd3d8;
-  --theme-elevation-300: #c0c5cb;
-  --theme-elevation-350: #afb4bb;
-  --theme-elevation-400: #9aa0a8;
-  --theme-elevation-450: #878e96;
-  --theme-elevation-500: #747b84;
-  --theme-elevation-550: #666d76;
-  --theme-elevation-600: #565d66;
-  --theme-elevation-650: #484e57;
-  --theme-elevation-700: #3b4049;
-  --theme-elevation-750: #2f343c;
-  --theme-elevation-800: #252930;
-  --theme-elevation-850: #1f2329;
-  --theme-elevation-900: #181b20;
-  --theme-elevation-950: #121418;
-  --theme-elevation-1000: #0c0e11;
+  --theme-elevation-50: #f2f1f0;
+  --theme-elevation-100: #e4e3e2;
+  --theme-elevation-150: #d6d5d3;
+  --theme-elevation-200: #c9c7c5;
+  --theme-elevation-250: #bcb9b6;
+  --theme-elevation-300: #aeaba7;
+  --theme-elevation-350: #a09d99;
+  --theme-elevation-400: #938f8a;
+  --theme-elevation-450: #86817c;
+  --theme-elevation-500: #78736d;
+  --theme-elevation-550: #6d6963;
+  --theme-elevation-600: #635f5a;
+  --theme-elevation-650: #585550;
+  --theme-elevation-700: #4e4b47;
+  --theme-elevation-750: #44403d;
+  --theme-elevation-800: #393633;
+  --theme-elevation-850: #2f2c2a;
+  --theme-elevation-900: #242220;
+  --theme-elevation-950: #1a1817;
+  --theme-elevation-1000: #0f0e0d;
 
-  --theme-success-50: #edf1f6;
-  --theme-success-100: #dfe6ef;
-  --theme-success-150: #ccd7e5;
-  --theme-success-200: #b5c5da;
-  --theme-success-250: #9db2cd;
-  --theme-success-300: #86a0c0;
-  --theme-success-350: #6f8db3;
-  --theme-success-400: #5a7ba6;
-  --theme-success-450: #476c9b;
-  --theme-success-500: #3b5f8a;
-  --theme-success-550: #33547b;
-  --theme-success-600: #2c4a6d;
-  --theme-success-650: #26405f;
-  --theme-success-700: #203752;
-  --theme-success-750: #1b2e45;
-  --theme-success-800: #16263a;
-  --theme-success-850: #121f30;
-  --theme-success-900: #0e1826;
-  --theme-success-950: #0a111b;
+  --theme-success-50: #f1ece8;
+  --theme-success-100: #e4dcd4;
+  --theme-success-150: #d8ccc1;
+  --theme-success-200: #cdbdaf;
+  --theme-success-250: #c1ae9d;
+  --theme-success-300: #b6a08c;
+  --theme-success-350: #ac917b;
+  --theme-success-400: #a1836a;
+  --theme-success-450: #967659;
+  --theme-success-500: #8c6849;
+  --theme-success-550: #805f43;
+  --theme-success-600: #74563c;
+  --theme-success-650: #684d36;
+  --theme-success-700: #5c442f;
+  --theme-success-750: #503b29;
+  --theme-success-800: #443223;
+  --theme-success-850: #38291c;
+  --theme-success-900: #2c2016;
+  --theme-success-950: #20170f;
 
   --theme-error-50: #fdf2f3;
   --theme-error-100: #fbe4e6;
@@ -163,7 +167,7 @@ html[data-theme='light'] {
   --theme-input-bg: #ffffff;
   --theme-text: var(--mx-ink);
   --theme-border-color: var(--mx-line);
-  --theme-overlay: rgba(11, 26, 51, 0.55);
+  --theme-overlay: rgba(31, 30, 28, 0.55);
 
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     sans-serif;
@@ -219,9 +223,9 @@ a {
   scrollbar-color: var(--theme-elevation-250) transparent;
 }
 
-/* 2.2 Menú lateral: navy, como el pie del sitio ────────────────────────── */
+/* 2.2 Menú lateral: gris carbón ───────────────────────────────────────── */
 .nav {
-  background: linear-gradient(180deg, var(--mx-navy) 0%, var(--mx-navy-dark) 100%);
+  background: linear-gradient(180deg, var(--mx-carbon) 0%, var(--mx-carbon-dark) 100%);
   color: #ffffff;
   border-right: 0;
   border-left: 0;
@@ -286,7 +290,7 @@ a {
 .nav__link:has(.nav__link-indicator) {
   color: #ffffff;
   font-weight: 600;
-  background: rgba(59, 95, 138, 0.18);
+  background: rgba(140, 104, 73, 0.18);
 }
 
 .nav__link-indicator {
@@ -452,7 +456,7 @@ a {
 .btn--style-secondary {
   --color: var(--mx-navy);
   --bg-color: #ffffff;
-  --btn-border: 1px solid #c9d0da;
+  --btn-border: 1px solid #d6d0c9;
   --hover-color: var(--mx-navy);
   --hover-btn-border: 1px solid var(--mx-navy);
 }
@@ -472,7 +476,7 @@ a {
 }
 
 .btn--style-primary {
-  box-shadow: 0 6px 16px rgba(19, 41, 75, 0.22);
+  box-shadow: 0 6px 16px rgba(107, 74, 51, 0.22);
 }
 
 /* 2.6 Listados y tablas ────────────────────────────────────────────────── */
@@ -620,7 +624,7 @@ textarea,
 input:not([type='checkbox']):not([type='radio']):hover,
 textarea:hover,
 .react-select .rs__control:not(:disabled):hover {
-  border-color: #c9d0da;
+  border-color: #d6d0c9;
   box-shadow: none;
 }
 
@@ -630,7 +634,7 @@ textarea:focus,
 .react-select .rs__control--menu-is-open {
   outline: none;
   border-color: var(--mx-teal);
-  box-shadow: 0 0 0 3px rgba(59, 95, 138, 0.22);
+  box-shadow: 0 0 0 3px rgba(140, 104, 73, 0.22);
 }
 
 /* Barra lateral del documento (estado, disponibilidad, folio…) */
@@ -665,7 +669,7 @@ textarea:focus,
 }
 
 .collapsible--style-default:hover {
-  border-color: #c9d0da;
+  border-color: #d6d0c9;
 }
 
 .collapsible__toggle-wrap {
@@ -711,9 +715,9 @@ textarea:focus,
 /* 2.9 Inicio de sesión y pantallas mínimas ─────────────────────────────── */
 .template-minimal {
   background:
-    radial-gradient(900px 520px at 85% -10%, rgba(59, 95, 138, 0.35), transparent 60%),
-    radial-gradient(700px 420px at -10% 110%, rgba(201, 205, 211, 0.18), transparent 55%),
-    linear-gradient(160deg, var(--mx-navy) 0%, var(--mx-navy-dark) 100%);
+    radial-gradient(900px 520px at 85% -10%, rgba(140, 104, 73, 0.35), transparent 60%),
+    radial-gradient(700px 420px at -10% 110%, rgba(217, 212, 206, 0.18), transparent 55%),
+    linear-gradient(160deg, var(--mx-carbon) 0%, var(--mx-carbon-dark) 100%);
   color: var(--mx-ink);
 }
 
@@ -797,8 +801,8 @@ textarea:focus,
 }
 
 .mx-marca__emblema {
-  height: 34px;
-  width: 34px;
+  height: 22px;
+  width: auto;
   display: block;
   flex: none;
 }
@@ -864,8 +868,8 @@ textarea:focus,
   border-radius: var(--mx-radius-panel);
   color: #ffffff;
   background:
-    radial-gradient(640px 320px at 100% 0%, rgba(59, 95, 138, 0.45), transparent 60%),
-    linear-gradient(135deg, var(--mx-navy) 0%, var(--mx-navy-light) 55%, var(--mx-navy-dark) 100%);
+    radial-gradient(640px 320px at 100% 0%, rgba(140, 104, 73, 0.45), transparent 60%),
+    linear-gradient(135deg, var(--mx-carbon) 0%, var(--mx-carbon-light) 55%, var(--mx-carbon-dark) 100%);
   box-shadow: var(--mx-shadow-soft);
 }
 
@@ -942,12 +946,12 @@ textarea:focus,
 
 .mx-bienvenida__accion--teal {
   background: var(--mx-teal);
-  color: #0b1a33;
+  color: #ffffff;
 }
 
 .mx-bienvenida__accion--teal:hover {
   background: var(--mx-teal-light);
-  color: #0b1a33;
+  color: #1f1e1c;
 }
 
 .mx-bienvenida__accion--claro {
@@ -1165,7 +1169,7 @@ textarea:focus,
   align-items: center;
   padding: 8px 16px;
   border-radius: var(--mx-radius-pill);
-  border: 1px solid #c9d0da;
+  border: 1px solid #d6d0c9;
   background: #ffffff;
   color: var(--mx-navy);
   font-size: 13.5px;

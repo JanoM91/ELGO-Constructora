@@ -8,7 +8,7 @@ import { permisosDe, usaFinanzas } from '../../lib/permisos'
  * Enlace «Finanzas» en el menú del panel (heredado de MacAuto Finanzas).
  *
  * Solo aparece si el rol de la persona usa Finanzas. Igual que los otros
- * enlaces del menú navy, el color lo pone app/(payload)/custom.css (§2.2):
+ * enlaces del menú gris carbón, el color lo pone app/(payload)/custom.css (§2.2):
  * todo lo que va dentro del menú tiene que decir su color.
  */
 export default async function EnlaceFinanzas({ payload, user }: ServerProps) {

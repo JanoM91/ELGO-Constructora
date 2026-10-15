@@ -1,13 +1,12 @@
 """
 Iconos de ELGO Finanzas para la pantalla de inicio del celular.
 
-Mismo esquema que MacAuto Finanzas (docs/61 de ese proyecto): fondo del color
-primario oscuro de la marca, el isotipo ELGO (trazos gris claro y palabra en blanco), y la palabra
-«Finanzas» debajo. La etiqueta del icono la pone el teléfono aparte.
+Mismo esquema que MacAuto Finanzas (docs/61 de ese proyecto): fondo gris
+carbón de la marca, el isotipo oficial de ELGO (tres trazos en gris claro) y
+la palabra ELGO debajo en blanco. La etiqueta «Finanzas» la pone el teléfono.
 
-Parte de public/logo-mark-white.png (los tres trazos en gris claro y ELGO en
-blanco, sobre fondo transparente; lo genera scripts/marca-elgo/) y genera en
-public/finanzas/:
+Parte de public/logo-mark-white.png (los tres trazos en gris claro sobre fondo
+transparente; lo genera scripts/marca-elgo/) y genera en public/finanzas/:
 
   icon-192.png / icon-512.png                    Android (manifest, purpose "any")
   icon-maskable-192.png / icon-maskable-512.png  Android con máscara (el dibujo
@@ -19,7 +18,7 @@ Uso (solo hace falta volver a correrlo si cambia el logotipo o el nombre):
 
   pip install Pillow
   python3 scripts/iconos-finanzas/generar-iconos.py
-  python3 scripts/iconos-finanzas/generar-iconos.py --texto Finanzas --fondo "#13294b" --acento "#c9cdd3"
+  python3 scripts/iconos-finanzas/generar-iconos.py --texto ELGO --fondo "#2e2c2a" --acento "#ffffff"
 """
 import argparse
 import os
@@ -57,12 +56,17 @@ def icono(tam, isotipo, fondo, acento, texto, zona, ruta_fuente, redondeo=False)
         base.putalpha(m)
     util = tam * zona
     margen = (tam - util) / 2
-    alto_texto = util * 0.17 if texto else 0
-    hueco = util * 0.05 if texto else 0
-    lado = int(min(util * 0.86, util - alto_texto - hueco))
-    iso = isotipo.resize((lado, lado), Image.LANCZOS)
-    y0 = int(margen + (util - lado - hueco - alto_texto) / 2)
-    base.alpha_composite(iso, (int((tam - lado) / 2), y0))
+    alto_texto = util * 0.2 if texto else 0
+    hueco = util * 0.08 if texto else 0
+    # El isotipo de ELGO es apaisado: se ajusta a lo ancho sin deformarlo.
+    ancho_max = util * 0.9
+    alto_max = util - alto_texto - hueco
+    escala = min(ancho_max / isotipo.width, alto_max / isotipo.height)
+    iw, ih = int(isotipo.width * escala), int(isotipo.height * escala)
+    iso = isotipo.resize((iw, ih), Image.LANCZOS)
+    y0 = int(margen + (util - ih - hueco - alto_texto) / 2)
+    base.alpha_composite(iso, (int((tam - iw) / 2), y0))
+    lado = ih
     if texto:
         d = ImageDraw.Draw(base)
         t = int(alto_texto * 0.9)
@@ -78,9 +82,9 @@ def icono(tam, isotipo, fondo, acento, texto, zona, ruta_fuente, redondeo=False)
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--isotipo', default=os.path.join(RAIZ, 'public', 'logo-mark-white.png'))
-    ap.add_argument('--fondo', default='#13294b')
-    ap.add_argument('--acento', default='#c9cdd3')
-    ap.add_argument('--texto', default='Finanzas')
+    ap.add_argument('--fondo', default='#2e2c2a')
+    ap.add_argument('--acento', default='#ffffff')
+    ap.add_argument('--texto', default='ELGO')
     ap.add_argument('--fuente', default=None)
     ap.add_argument('--salida', default=os.path.join(RAIZ, 'public', 'finanzas'))
     a = ap.parse_args()

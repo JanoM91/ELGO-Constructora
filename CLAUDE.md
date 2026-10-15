@@ -51,7 +51,9 @@ Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (com
 
 ## Diseño
 
-Paleta ELGO: azul marino, negro, grises y **fondo blanco**. Tokens en `app/(payload)/custom.css` (`--mx-*`; los nombres «navy» y «teal» se heredan): primario azul marino `#13294b`, acento `#3b5f8a`, gris del logotipo `#c9cdd3` sobre fondos oscuros, texto de acento `#24456f`, tinta `#111317`. Logotipos en `public/` (`logo-elgo.png`, `logo-mark.png`, `logo-mark-white.png`) generados por `scripts/marca-elgo/generar-logos.py` — **recreación provisional** hasta tener el vector oficial. Iconos del celular en `public/finanzas/` (`scripts/iconos-finanzas/generar-iconos.py`).
+Paleta ELGO (14-oct-2026): **grises cálidos y café**, fondo blanco. Tokens en `app/(payload)/custom.css` (`--mx-*`; los nombres «navy» y «teal» se heredan): primario café `#6b4a33` (botones, selección), acento café claro `#8c6849`, **gris carbón `#2e2c2a`** (`--mx-carbon*`: encabezado de Finanzas, menú lateral, acceso, bienvenida y barra de estado del celular), gris claro del logotipo `#d9d4ce` sobre fondos oscuros, texto de acento `#6e4b31`, tinta `#1d1b19`. Contraste AA verificado (blanco sobre café ≥ 5:1).
+
+**Logotipo oficial**: tres trazos grises (`#626262`), vectorizados del archivo de ELGO en `scripts/marca-elgo/generar-logos.py` (polígonos medidos) → `public/logo-mark.svg`, `logo-elgo.png` (isotipo + ELGO, acceso), `logo-mark.png`, `logo-mark-white.png` (apaisados). Iconos del celular en `public/finanzas/` con `scripts/iconos-finanzas/generar-iconos.py` (isotipo + ELGO sobre gris carbón). La palabra ELGO bajo el isotipo es Inter Display ExtraBold; cambiarla si ELGO entrega su tipografía.
 
 ## Convenciones
 
