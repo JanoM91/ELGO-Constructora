@@ -4,6 +4,8 @@ App de registro de entradas, gastos y compromisos de **Constructora Eléctrica d
 
 Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (compras con agente cotizador, clientes y proveedores, concursos) se apoyarán en ella. Operación y arranque: `docs/OPERACION.md`.
 
+**ELGO Inventario** (19-oct-2026, fase A) es la segunda app, en `/admin/inventario`: catálogo de materiales, existencias por ubicación y movimientos; después cotizaciones leídas por Claude, histórico de precios por proveedor, comparativos y pronóstico. Operación: `docs/INVENTARIO.md`. Diseño completo: prompt maestro `elgo-inventario-prompt-maestro-v0.1` en el proyecto de Claude.
+
 ## Stack (no cambiar sin consultar)
 
 - Next.js 16 (App Router) + TypeScript estricto · Payload CMS 3 embebido (`/admin`).
@@ -19,12 +21,13 @@ Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (com
 ## Reglas heredadas (no romper)
 
 - **Todo lo que escribe en `fin-*` pasa por `lib/finanzas/servicio.ts`** (expuesto en `app/api/finanzas/[...ruta]/route.ts`). `fin-operaciones`, `fin-movimientos`, `fin-comprobantes` y `fin-bitacora` responden 403 en la API genérica de Payload, incluso al superadmin.
+- **Lo mismo en Inventario:** los registros `inv-documentos`, `inv-partidas`, `inv-precios`, `inv-movimientos` e `inv-bitacora` solo se escriben por `lib/inventario/servicio.ts` (`app/api/inventario/[...ruta]/route.ts`). Los catálogos `inv-*` (proveedores, familias, materiales, equivalencias, ubicaciones) sí se editan en el panel. Las existencias nunca se guardan: son la suma de movimientos.
 - Permisos en `lib/permisos.ts` (con Payload) y `lib/permisosBase.ts` (puro). Roles editables en `roles`; `esSuperadmin` en `users`. **La primera cuenta de la instalación nace superadmin**; después, toda cuenta nueva exige «Rol de acceso».
 - Toda colección nueva se envuelve con `protegerColeccion` (ya lo hace `payload.config.ts`).
 - Dinero en **centavos enteros** para calcular (`lib/finanzas/reglas.ts`); en la base, pesos. Fechas reales como texto `AAAA-MM-DD` en la zona del negocio.
 - Nada financiero se borra: se corrige o se anula con motivo; todo queda en `fin-bitacora`.
 - Pantallas de Finanzas: probar de 320 a 430 px y campos de 16 px.
-- Pruebas sin base: `npm run test:finanzas` (también en CI).
+- Pruebas sin base: `npm run test:finanzas` y `npm run test:inventario` (también en CI).
 
 ## Lo propio de ELGO
 
@@ -33,6 +36,7 @@ Proyecto de Exkalibur Consulting. Es la primera app de ELGO; las siguientes (com
 - `GET /api/finanzas/operaciones?obra=<id>` filtra movimientos por obra.
 - Catálogo sugerido (botón en Configuración): 3 áreas de soporte y 29 categorías de constructora. Los conceptos de obra **no** traen área sugerida: al registrarlos se elige la obra.
 - Roles sugeridos: Dueño, Administración, Compras, Residente de obra.
+- **Inventario (fase A):** grupo `inventario` en `roles` (usar, documentos, confirmar, verPrecios, requisiciones, movimientos, configurar, obras todas/alcance); `PermisosInventario` en `lib/permisosBase.ts`. Reglas puras en `lib/inventario/reglas.ts` (unidades y factores tramo↔m, kg↔m; normalización de descripciones PG/PD y pulgadas; empate por parecido; existencias; variación y pronóstico de precios). Precios en la base sin IVA por unidad base. Migración `20261019_151532_inventario_base` con RLS. Pantallas en `components/admin/inventario/` reutilizando `fz-*` y `comun.tsx` de Finanzas.
 
 ## Heredado de MacAuto (14-oct-2026; docs/63 y 68 de ese repo)
 

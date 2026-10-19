@@ -38,12 +38,28 @@ export type PermisosFinanzas = {
   moverDinero: boolean
 }
 
+/** Inventario (ELGO Inventario, fase A). Las obras de su alcance se toman de Finanzas (`fin.alcance`). */
+export type PermisosInventario = {
+  usar: boolean
+  /** Subir documentos (cotizaciones, requisiciones, facturas) y revisar los empates propuestos. */
+  documentos: boolean
+  /** Confirmar un documento: escribe precios y equivalencias. */
+  confirmar: boolean
+  verPrecios: boolean
+  requisiciones: boolean
+  movimientos: boolean
+  configurar: boolean
+  /** 'todas' o solo las obras de `fin.alcance` (y la bodega). */
+  obras: 'todas' | 'alcance'
+}
+
 export type Permisos = {
   superadmin: boolean
   /** Entra al panel completo del sitio. Sin esto, la persona entra directo a Finanzas. */
   panel: boolean
   gestionarUsuarios: boolean
   fin: PermisosFinanzas
+  inv: PermisosInventario
   /** Para mostrar en pantalla: «Superadministrador», el nombre del rol o «Sin rol». */
   rolNombre: string
   origen: 'superadmin' | 'rol' | 'ninguno'
@@ -66,6 +82,16 @@ export type RolGuardado = {
     configurar?: boolean | null
     moverDinero?: boolean | null
   } | null
+  inventario?: {
+    usar?: boolean | null
+    documentos?: boolean | null
+    confirmar?: boolean | null
+    verPrecios?: boolean | null
+    requisiciones?: boolean | null
+    movimientos?: boolean | null
+    configurar?: boolean | null
+    obras?: string | null
+  } | null
 }
 
 export type UsuarioParaPermisos = {
@@ -75,6 +101,13 @@ export type UsuarioParaPermisos = {
 const SIN_FINANZAS: PermisosFinanzas = {
   registrar: false, ver: 'propios', alcance: [], verRestringidas: false, verSaldos: false, verUtilidad: false,
   liquidar: false, corregir: false, revisarComprobantes: false, configurar: false, moverDinero: false,
+}
+
+const SIN_INVENTARIO: PermisosInventario = {
+  usar: false, documentos: false, confirmar: false, verPrecios: false, requisiciones: false, movimientos: false, configurar: false, obras: 'alcance',
+}
+const TODO_INVENTARIO: PermisosInventario = {
+  usar: true, documentos: true, confirmar: true, verPrecios: true, requisiciones: true, movimientos: true, configurar: true, obras: 'todas',
 }
 
 const TODO_FINANZAS: PermisosFinanzas = {
@@ -88,14 +121,27 @@ const TODO_FINANZAS: PermisosFinanzas = {
  */
 export function calcularPermisos(usuario: UsuarioParaPermisos | null | undefined, rol: RolGuardado | null): Permisos {
   if (!usuario) {
-    return { superadmin: false, panel: false, gestionarUsuarios: false, fin: { ...SIN_FINANZAS }, rolNombre: 'Sin sesión', origen: 'ninguno' }
+    return { superadmin: false, panel: false, gestionarUsuarios: false, fin: { ...SIN_FINANZAS }, inv: { ...SIN_INVENTARIO }, rolNombre: 'Sin sesión', origen: 'ninguno' }
   }
   if (usuario.esSuperadmin) {
-    return { superadmin: true, panel: true, gestionarUsuarios: true, fin: { ...TODO_FINANZAS }, rolNombre: 'Superadministrador', origen: 'superadmin' }
+    return { superadmin: true, panel: true, gestionarUsuarios: true, fin: { ...TODO_FINANZAS }, inv: { ...TODO_INVENTARIO }, rolNombre: 'Superadministrador', origen: 'superadmin' }
   }
   if (rol) {
     const f = rol.finanzas ?? {}
     const ver: AlcanceDeVista = f.ver === 'todos' || f.ver === 'alcance' ? f.ver : 'propios'
+    const i = rol.inventario ?? {}
+    /* Quien configura o confirma usa Inventario aunque la casilla «usar» esté apagada (roles guardados antes del módulo). */
+    const invConfigura = Boolean(i.configurar)
+    const inv: PermisosInventario = {
+      usar: Boolean(i.usar) || Boolean(i.documentos) || Boolean(i.confirmar) || Boolean(i.verPrecios) || Boolean(i.requisiciones) || Boolean(i.movimientos) || invConfigura,
+      documentos: Boolean(i.documentos) || Boolean(i.confirmar) || invConfigura,
+      confirmar: Boolean(i.confirmar) || invConfigura,
+      verPrecios: Boolean(i.verPrecios) || Boolean(i.confirmar) || invConfigura,
+      requisiciones: Boolean(i.requisiciones) || invConfigura,
+      movimientos: Boolean(i.movimientos) || invConfigura,
+      configurar: invConfigura,
+      obras: i.obras === 'todas' || (i.obras == null && ver === 'todos') ? 'todas' : 'alcance',
+    }
     return {
       superadmin: false,
       panel: Boolean(rol.panel?.acceso),
@@ -118,12 +164,18 @@ export function calcularPermisos(usuario: UsuarioParaPermisos | null | undefined
            cambio y nadie lo pierde por volver a guardar un rol. */
         moverDinero: Boolean(f.moverDinero) || Boolean(f.configurar),
       },
+      inv,
       rolNombre: rol.nombre?.trim() || 'Rol sin nombre',
       origen: 'rol',
     }
   }
   /* Sin rol: no entra a nada. Quien administra usuarios le asigna uno. */
-  return { superadmin: false, panel: false, gestionarUsuarios: false, fin: { ...SIN_FINANZAS }, rolNombre: 'Sin rol', origen: 'ninguno' }
+  return { superadmin: false, panel: false, gestionarUsuarios: false, fin: { ...SIN_FINANZAS }, inv: { ...SIN_INVENTARIO }, rolNombre: 'Sin rol', origen: 'ninguno' }
+}
+
+/** ¿Tiene algo que hacer en Inventario? */
+export function usaInventario(p: Permisos): boolean {
+  return p.superadmin || p.inv.usar
 }
 
 /** ¿Tiene algo que hacer en Finanzas? */
@@ -134,5 +186,5 @@ export function usaFinanzas(p: Permisos): boolean {
 
 /** Quien no entra al panel completo y sí usa Finanzas: su acceso es directo a la captura. */
 export function esSoloCaptura(p: Permisos): boolean {
-  return !p.panel && usaFinanzas(p)
+  return !p.panel && (usaFinanzas(p) || usaInventario(p))
 }

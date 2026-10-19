@@ -53,6 +53,9 @@ jobs:
       - name: Pruebas de Finanzas (reglas de dinero y permisos, sin base de datos)
         run: npm run test:finanzas
 
+      - name: Pruebas de Inventario (unidades, empate, existencias, precios, sin base de datos)
+        run: npm run test:inventario
+
       - name: Compilar para produccion
         run: npm run build
         env:

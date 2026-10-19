@@ -13,7 +13,8 @@
     "migrate": "payload migrate",
     "migrate:create": "payload migrate:create",
     "migrate:status": "payload migrate:status",
-    "test:finanzas": "node --experimental-strip-types --no-warnings scripts/probarFinanzas.mjs"
+    "test:finanzas": "node --experimental-strip-types --no-warnings scripts/probarFinanzas.mjs",
+    "test:inventario": "node --experimental-strip-types --no-warnings scripts/probarInventario.mjs"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "^3.0.0",

@@ -76,6 +76,16 @@ export interface Config {
     'fin-movimientos': FinMovimiento;
     'fin-comprobantes': FinComprobante;
     'fin-bitacora': FinBitacora;
+    'inv-proveedores': InvProveedor;
+    'inv-familias': InvFamilia;
+    'inv-materiales': InvMaterial;
+    'inv-equivalencias': InvEquivalencia;
+    'inv-ubicaciones': InvUbicacion;
+    'inv-documentos': InvDocumento;
+    'inv-partidas': InvPartida;
+    'inv-precios': InvPrecio;
+    'inv-movimientos': InvMovimiento;
+    'inv-bitacora': InvBitacora;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -92,6 +102,16 @@ export interface Config {
     'fin-movimientos': FinMovimientosSelect<false> | FinMovimientosSelect<true>;
     'fin-comprobantes': FinComprobantesSelect<false> | FinComprobantesSelect<true>;
     'fin-bitacora': FinBitacoraSelect<false> | FinBitacoraSelect<true>;
+    'inv-proveedores': InvProveedoresSelect<false> | InvProveedoresSelect<true>;
+    'inv-familias': InvFamiliasSelect<false> | InvFamiliasSelect<true>;
+    'inv-materiales': InvMaterialesSelect<false> | InvMaterialesSelect<true>;
+    'inv-equivalencias': InvEquivalenciasSelect<false> | InvEquivalenciasSelect<true>;
+    'inv-ubicaciones': InvUbicacionesSelect<false> | InvUbicacionesSelect<true>;
+    'inv-documentos': InvDocumentosSelect<false> | InvDocumentosSelect<true>;
+    'inv-partidas': InvPartidasSelect<false> | InvPartidasSelect<true>;
+    'inv-precios': InvPreciosSelect<false> | InvPreciosSelect<true>;
+    'inv-movimientos': InvMovimientosSelect<false> | InvMovimientosSelect<true>;
+    'inv-bitacora': InvBitacoraSelect<false> | InvBitacoraSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -103,9 +123,11 @@ export interface Config {
   fallbackLocale: null;
   globals: {
     'fin-configuracion': FinConfiguracion;
+    'inv-configuracion': InvConfiguracion;
   };
   globalsSelect: {
     'fin-configuracion': FinConfiguracionSelect<false> | FinConfiguracionSelect<true>;
+    'inv-configuracion': InvConfiguracionSelect<false> | InvConfiguracionSelect<true>;
   };
   locale: null;
   widgets: {
@@ -213,6 +235,25 @@ export interface Rol {
      * Los roles con «Configurar» mueven dinero siempre; esta casilla es para dárselo a un rol que no configura (por ejemplo, un tesorero).
      */
     moverDinero?: boolean | null;
+  };
+  inventario?: {
+    usar?: boolean | null;
+    documentos?: boolean | null;
+    /**
+     * Al confirmar se escribe el histórico de precios y las equivalencias. Incluye subir y revisar.
+     */
+    confirmar?: boolean | null;
+    verPrecios?: boolean | null;
+    requisiciones?: boolean | null;
+    movimientos?: boolean | null;
+    /**
+     * Incluye todo lo anterior.
+     */
+    configurar?: boolean | null;
+    /**
+     * Un residente solo ve y mueve material de sus obras. Si en Finanzas ve «Todos», aquí también, salvo que elijas otra cosa.
+     */
+    obras?: ('alcance' | 'todas') | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -399,6 +440,351 @@ export interface FinBitacora {
   createdAt: string;
 }
 /**
+ * A quién le pide precio ELGO: tiendas de Xalapa, distribuidores y fabricantes. «Referencia web» es un proveedor virtual para los precios de internet. Desactivar no borra la historia.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-proveedores".
+ */
+export interface InvProveedor {
+  id: number;
+  /**
+   * Como aparece en sus cotizaciones. Ej. «Eléctrico S.A. de C.V.»
+   */
+  nombre: string;
+  /**
+   * Para el celular y el cuadro comparativo. Ej. «Eléctrico», «M&M».
+   */
+  nombreCorto: string;
+  tipo: 'tienda' | 'distribuidor' | 'fabricante' | 'web';
+  prioridad: 'primera' | 'segunda' | 'foraneo' | 'referencia';
+  ciudad?: string | null;
+  /**
+   * La que aparece en sus cotizaciones o facturas. Opcional.
+   */
+  claveCliente?: string | null;
+  contactos?:
+    | {
+        nombre: string;
+        whatsapp?: string | null;
+        correo?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  condiciones?: {
+    vigenciaDias?: number | null;
+    /**
+     * Solo si lo tienen acordado. Vacío = no se sabe.
+     */
+    descuentoSobreLista?: number | null;
+    manejaSaldoAFavor?: boolean | null;
+  };
+  sitioWeb?: string | null;
+  activo?: boolean | null;
+  notas?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Cómo se agrupan los materiales, en dos niveles: una familia (p. ej. «Canalización») y sus subfamilias (p. ej. «Tubo conduit»). Sirve para buscar y para acotar el empate automático.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-familias".
+ */
+export interface InvFamilia {
+  id: number;
+  nombre: string;
+  /**
+   * Vacío = es una familia de primer nivel.
+   */
+  padre?: (number | null) | InvFamilia;
+  orden?: number | null;
+  activa?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * El catálogo canónico: una fila por material tal como lo nombra ELGO. Cada cotización o requisición que entra se empata con estas filas (o crea una nueva). Los precios conocidos los actualiza el sistema al confirmar documentos.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-materiales".
+ */
+export interface InvMaterial {
+  id: number;
+  /**
+   * La asigna el sistema (MAT-000001).
+   */
+  clave?: string | null;
+  familia?: (number | null) | InvFamilia;
+  /**
+   * Corta y en el vocabulario de ELGO. Ej. «Tubo conduit galvanizado pared gruesa 2"» o «Interruptor LAL36350 3P 350 A».
+   */
+  descripcion: string;
+  marca?: string | null;
+  /**
+   * Ej. «LAL36350», «NQ442L4C». Con marca + número de parte el empate es exacto.
+   */
+  numeroParte?: string | null;
+  /**
+   * En qué unidad se guardan precios y existencias. Si una tienda cotiza en otra (tramo, kg), se convierte con un factor.
+   */
+  unidadBase:
+    'pieza' | 'metro' | 'kilogramo' | 'tramo' | 'rollo' | 'caja' | 'lote' | 'juego' | 'litro' | 'bolsa' | 'par';
+  /**
+   * Tableros, interruptores y lo que un ingeniero debe revisar antes de comprar.
+   */
+  critico?: boolean | null;
+  /**
+   * Solo los que apliquen. Ayudan a distinguir variantes y a empatar descripciones.
+   */
+  atributos?: {
+    /**
+     * Ej. 2", 1 1/4", 3/8
+     */
+    medida?: string | null;
+    /**
+     * Ej. 12, 10, 1/0
+     */
+    calibre?: string | null;
+    color?: string | null;
+    pared?: ('pg' | 'pd' | 'na') | null;
+    /**
+     * Para tubería: 3.05 m por tramo es lo usual.
+     */
+    longitudTramo?: number | null;
+    /**
+     * Para cable que las tiendas cotizan por kilo.
+     */
+    pesoPorMetroKg?: number | null;
+    amperes?: number | null;
+    polos?: number | null;
+    /**
+     * Ej. 600 V, 240 V
+     */
+    tension?: string | null;
+    /**
+     * Ej. galvanizado, PVC, cobre
+     */
+    acabado?: string | null;
+  };
+  /**
+   * Lo actualiza el sistema al confirmar una cotización o factura. Sin IVA, por unidad base.
+   */
+  ultimoPrecio?: {
+    precioBase?: number | null;
+    proveedor?: (number | null) | InvProveedor;
+    fecha?: string | null;
+  };
+  /**
+   * El mejor precio vigente entre proveedores. Lo calcula el sistema.
+   */
+  precioReferencia?: number | null;
+  fechaUltimoMovimiento?: string | null;
+  textoBusqueda?: string | null;
+  activo?: boolean | null;
+  notas?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Cómo llama cada tienda a cada material nuestro. Cada vez que una persona confirma un empate, queda aquí; la siguiente vez el sistema lo reconoce solo. «Factor» convierte la unidad de la tienda a nuestra unidad base (1 tramo = 3.05 m).
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-equivalencias".
+ */
+export interface InvEquivalencia {
+  id: number;
+  textoOriginal: string;
+  /**
+   * Vacío = sirve para cualquier documento (p. ej. las listas del residente).
+   */
+  proveedor?: (number | null) | InvProveedor;
+  /**
+   * La clave de producto de la tienda, si la pone.
+   */
+  claveProveedor?: string | null;
+  material: number | InvMaterial;
+  /**
+   * Como viene en el documento: pza, tramo, m, kg…
+   */
+  unidadOriginal: string;
+  /**
+   * 1 unidad del documento = factor × unidad base. Ej. 1 tramo = 3.05 m.
+   */
+  factor: number;
+  confirmadaPor?: (number | null) | User;
+  confirmadaEn?: string | null;
+  documentoOrigen?: (number | null) | InvDocumento;
+  textoNormalizado?: string | null;
+  activa?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-documentos".
+ */
+export interface InvDocumento {
+  id: number;
+  tipo: 'cotizacion' | 'requisicion' | 'factura' | 'presupuesto' | 'referencia_web';
+  estado: 'por_revisar' | 'confirmado' | 'anulado';
+  proveedor?: (number | null) | InvProveedor;
+  obra?: (number | null) | FinActividad;
+  folio?: string | null;
+  titulo?: string | null;
+  fechaDocumento?: string | null;
+  vigenciaHasta?: string | null;
+  version: number;
+  documentoPadre?: (number | null) | InvDocumento;
+  archivoRuta?: string | null;
+  archivoNombre?: string | null;
+  archivoTipo?: string | null;
+  archivoTamano?: number | null;
+  subtotal?: number | null;
+  iva?: number | null;
+  total?: number | null;
+  cuadra?: boolean | null;
+  estadoRequisicion?: ('borrador' | 'enviada' | 'cotizada' | 'aprobada' | 'comprada' | 'cerrada') | null;
+  prioridad?: ('planeada' | 'urgente') | null;
+  necesariaPara?: string | null;
+  solicitante?: (number | null) | User;
+  origen?: ('manual' | 'lectura' | 'importacion') | null;
+  lecturaNotas?: string | null;
+  subidoPor: number | User;
+  confirmadoPor?: (number | null) | User;
+  confirmadoEn?: string | null;
+  anuladoPor?: (number | null) | User;
+  anuladoEn?: string | null;
+  motivoAnulacion?: string | null;
+  notas?: string | null;
+  claveIdempotencia?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Dónde puede haber material: la bodega, cada obra en curso (ligada a Obras y áreas de Finanzas), un vehículo o «en tránsito». Al terminar una obra, desactiva su ubicación: lo que quede ahí aparece como «por recuperar».
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-ubicaciones".
+ */
+export interface InvUbicacion {
+  id: number;
+  nombre: string;
+  tipo: 'bodega' | 'obra' | 'vehiculo' | 'transito';
+  /**
+   * La obra de Finanzas a la que corresponde. Una por ubicación.
+   */
+  obra?: (number | null) | FinActividad;
+  responsable?: (number | null) | User;
+  activa?: boolean | null;
+  notas?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-partidas".
+ */
+export interface InvPartida {
+  id: number;
+  documento: number | InvDocumento;
+  linea: number;
+  grupo?: string | null;
+  textoOriginal: string;
+  cantidadOriginal?: number | null;
+  unidadOriginal?: string | null;
+  precioUnitarioOriginal?: number | null;
+  importeOriginal?: number | null;
+  marcaOriginal?: string | null;
+  claveProveedor?: string | null;
+  incluyeIva?: boolean | null;
+  material?: (number | null) | InvMaterial;
+  metodoEmpate?: ('numero_parte' | 'clave_proveedor' | 'equivalencia' | 'descripcion' | 'manual') | null;
+  confianzaEmpate?: number | null;
+  estadoEmpate: 'propuesto' | 'confirmado' | 'sin_material' | 'descartada';
+  materialPropuesto?: (number | null) | InvMaterial;
+  factor?: number | null;
+  cantidadBase?: number | null;
+  precioUnitarioBase?: number | null;
+  importeBase?: number | null;
+  precioPronosticado?: number | null;
+  fuentePronostico?: string | null;
+  observaciones?:
+    | {
+        tipo: string;
+        texto: string;
+        id?: string | null;
+      }[]
+    | null;
+  variacionPct?: number | null;
+  alertaPrecio?: boolean | null;
+  revisadaPor?: (number | null) | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-precios".
+ */
+export interface InvPrecio {
+  id: number;
+  material: number | InvMaterial;
+  proveedor: number | InvProveedor;
+  fecha: string;
+  vigenciaHasta?: string | null;
+  precioBase: number;
+  unidadBase: string;
+  fuente: 'cotizacion' | 'factura' | 'web' | 'manual';
+  documento?: (number | null) | InvDocumento;
+  partida?: (number | null) | InvPartida;
+  url?: string | null;
+  anulado?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-movimientos".
+ */
+export interface InvMovimiento {
+  id: number;
+  tipo: 'entrada_compra' | 'salida_obra' | 'traspaso' | 'devolucion' | 'ajuste' | 'merma' | 'apertura';
+  material: number | InvMaterial;
+  cantidad: number;
+  origen?: (number | null) | InvUbicacion;
+  destino?: (number | null) | InvUbicacion;
+  obra?: (number | null) | FinActividad;
+  fecha: string;
+  documento?: (number | null) | InvDocumento;
+  partida?: (number | null) | InvPartida;
+  costoUnitarioBase?: number | null;
+  fotoRuta?: string | null;
+  motivo?: string | null;
+  registradoPor: number | User;
+  anulado?: boolean | null;
+  motivoAnulacion?: string | null;
+  claveIdempotencia?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-bitacora".
+ */
+export interface InvBitacora {
+  id: number;
+  coleccion: string;
+  registro?: number | null;
+  documento?: (number | null) | InvDocumento;
+  accion: 'crear' | 'subir' | 'empatar' | 'confirmar' | 'anular' | 'movimiento' | 'corregir' | 'arranque';
+  campo?: string | null;
+  valorAnterior?: string | null;
+  valorNuevo?: string | null;
+  motivo?: string | null;
+  usuario: number | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -457,6 +843,46 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'fin-bitacora';
         value: number | FinBitacora;
+      } | null)
+    | ({
+        relationTo: 'inv-proveedores';
+        value: number | InvProveedor;
+      } | null)
+    | ({
+        relationTo: 'inv-familias';
+        value: number | InvFamilia;
+      } | null)
+    | ({
+        relationTo: 'inv-materiales';
+        value: number | InvMaterial;
+      } | null)
+    | ({
+        relationTo: 'inv-equivalencias';
+        value: number | InvEquivalencia;
+      } | null)
+    | ({
+        relationTo: 'inv-ubicaciones';
+        value: number | InvUbicacion;
+      } | null)
+    | ({
+        relationTo: 'inv-documentos';
+        value: number | InvDocumento;
+      } | null)
+    | ({
+        relationTo: 'inv-partidas';
+        value: number | InvPartida;
+      } | null)
+    | ({
+        relationTo: 'inv-precios';
+        value: number | InvPrecio;
+      } | null)
+    | ({
+        relationTo: 'inv-movimientos';
+        value: number | InvMovimiento;
+      } | null)
+    | ({
+        relationTo: 'inv-bitacora';
+        value: number | InvBitacora;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -552,6 +978,18 @@ export interface RolesSelect<T extends boolean = true> {
         revisarComprobantes?: T;
         configurar?: T;
         moverDinero?: T;
+      };
+  inventario?:
+    | T
+    | {
+        usar?: T;
+        documentos?: T;
+        confirmar?: T;
+        verPrecios?: T;
+        requisiciones?: T;
+        movimientos?: T;
+        configurar?: T;
+        obras?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -692,6 +1130,264 @@ export interface FinBitacoraSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-proveedores_select".
+ */
+export interface InvProveedoresSelect<T extends boolean = true> {
+  nombre?: T;
+  nombreCorto?: T;
+  tipo?: T;
+  prioridad?: T;
+  ciudad?: T;
+  claveCliente?: T;
+  contactos?:
+    | T
+    | {
+        nombre?: T;
+        whatsapp?: T;
+        correo?: T;
+        id?: T;
+      };
+  condiciones?:
+    | T
+    | {
+        vigenciaDias?: T;
+        descuentoSobreLista?: T;
+        manejaSaldoAFavor?: T;
+      };
+  sitioWeb?: T;
+  activo?: T;
+  notas?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-familias_select".
+ */
+export interface InvFamiliasSelect<T extends boolean = true> {
+  nombre?: T;
+  padre?: T;
+  orden?: T;
+  activa?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-materiales_select".
+ */
+export interface InvMaterialesSelect<T extends boolean = true> {
+  clave?: T;
+  familia?: T;
+  descripcion?: T;
+  marca?: T;
+  numeroParte?: T;
+  unidadBase?: T;
+  critico?: T;
+  atributos?:
+    | T
+    | {
+        medida?: T;
+        calibre?: T;
+        color?: T;
+        pared?: T;
+        longitudTramo?: T;
+        pesoPorMetroKg?: T;
+        amperes?: T;
+        polos?: T;
+        tension?: T;
+        acabado?: T;
+      };
+  ultimoPrecio?:
+    | T
+    | {
+        precioBase?: T;
+        proveedor?: T;
+        fecha?: T;
+      };
+  precioReferencia?: T;
+  fechaUltimoMovimiento?: T;
+  textoBusqueda?: T;
+  activo?: T;
+  notas?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-equivalencias_select".
+ */
+export interface InvEquivalenciasSelect<T extends boolean = true> {
+  textoOriginal?: T;
+  proveedor?: T;
+  claveProveedor?: T;
+  material?: T;
+  unidadOriginal?: T;
+  factor?: T;
+  confirmadaPor?: T;
+  confirmadaEn?: T;
+  documentoOrigen?: T;
+  textoNormalizado?: T;
+  activa?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-ubicaciones_select".
+ */
+export interface InvUbicacionesSelect<T extends boolean = true> {
+  nombre?: T;
+  tipo?: T;
+  obra?: T;
+  responsable?: T;
+  activa?: T;
+  notas?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-documentos_select".
+ */
+export interface InvDocumentosSelect<T extends boolean = true> {
+  tipo?: T;
+  estado?: T;
+  proveedor?: T;
+  obra?: T;
+  folio?: T;
+  titulo?: T;
+  fechaDocumento?: T;
+  vigenciaHasta?: T;
+  version?: T;
+  documentoPadre?: T;
+  archivoRuta?: T;
+  archivoNombre?: T;
+  archivoTipo?: T;
+  archivoTamano?: T;
+  subtotal?: T;
+  iva?: T;
+  total?: T;
+  cuadra?: T;
+  estadoRequisicion?: T;
+  prioridad?: T;
+  necesariaPara?: T;
+  solicitante?: T;
+  origen?: T;
+  lecturaNotas?: T;
+  subidoPor?: T;
+  confirmadoPor?: T;
+  confirmadoEn?: T;
+  anuladoPor?: T;
+  anuladoEn?: T;
+  motivoAnulacion?: T;
+  notas?: T;
+  claveIdempotencia?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-partidas_select".
+ */
+export interface InvPartidasSelect<T extends boolean = true> {
+  documento?: T;
+  linea?: T;
+  grupo?: T;
+  textoOriginal?: T;
+  cantidadOriginal?: T;
+  unidadOriginal?: T;
+  precioUnitarioOriginal?: T;
+  importeOriginal?: T;
+  marcaOriginal?: T;
+  claveProveedor?: T;
+  incluyeIva?: T;
+  material?: T;
+  metodoEmpate?: T;
+  confianzaEmpate?: T;
+  estadoEmpate?: T;
+  materialPropuesto?: T;
+  factor?: T;
+  cantidadBase?: T;
+  precioUnitarioBase?: T;
+  importeBase?: T;
+  precioPronosticado?: T;
+  fuentePronostico?: T;
+  observaciones?:
+    | T
+    | {
+        tipo?: T;
+        texto?: T;
+        id?: T;
+      };
+  variacionPct?: T;
+  alertaPrecio?: T;
+  revisadaPor?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-precios_select".
+ */
+export interface InvPreciosSelect<T extends boolean = true> {
+  material?: T;
+  proveedor?: T;
+  fecha?: T;
+  vigenciaHasta?: T;
+  precioBase?: T;
+  unidadBase?: T;
+  fuente?: T;
+  documento?: T;
+  partida?: T;
+  url?: T;
+  anulado?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-movimientos_select".
+ */
+export interface InvMovimientosSelect<T extends boolean = true> {
+  tipo?: T;
+  material?: T;
+  cantidad?: T;
+  origen?: T;
+  destino?: T;
+  obra?: T;
+  fecha?: T;
+  documento?: T;
+  partida?: T;
+  costoUnitarioBase?: T;
+  fotoRuta?: T;
+  motivo?: T;
+  registradoPor?: T;
+  anulado?: T;
+  motivoAnulacion?: T;
+  claveIdempotencia?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-bitacora_select".
+ */
+export interface InvBitacoraSelect<T extends boolean = true> {
+  coleccion?: T;
+  registro?: T;
+  documento?: T;
+  accion?: T;
+  campo?: T;
+  valorAnterior?: T;
+  valorNuevo?: T;
+  motivo?: T;
+  usuario?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -749,11 +1445,47 @@ export interface FinConfiguracion {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-configuracion".
+ */
+export interface InvConfiguracion {
+  id: number;
+  tasaIva: number;
+  umbralAlertaPrecio: number;
+  diasPrecioViejo: number;
+  umbralConfianzaEmpate: number;
+  /**
+   * El primero que se usa al pronosticar el costo de una requisición.
+   */
+  proveedorPreferido?: (number | null) | InvProveedor;
+  /**
+   * Vacío = superadministradores y roles con «Confirmar documentos y precios».
+   */
+  avisosMateriales?: (number | User)[] | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "fin-configuracion_select".
  */
 export interface FinConfiguracionSelect<T extends boolean = true> {
   fechaCorte?: T;
   avisosClasificacion?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inv-configuracion_select".
+ */
+export interface InvConfiguracionSelect<T extends boolean = true> {
+  tasaIva?: T;
+  umbralAlertaPrecio?: T;
+  diasPrecioViejo?: T;
+  umbralConfianzaEmpate?: T;
+  proveedorPreferido?: T;
+  avisosMateriales?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

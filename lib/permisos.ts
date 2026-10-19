@@ -18,10 +18,10 @@
  * memoriza por petición para no consultarlo veinte veces.
  */
 import type { Access, CollectionConfig, GlobalConfig, PayloadRequest } from 'payload'
-import { calcularPermisos, type Permisos, type RolGuardado, usaFinanzas } from './permisosBase'
+import { calcularPermisos, type Permisos, type RolGuardado, usaFinanzas, usaInventario } from './permisosBase'
 
 export type { Permisos } from './permisosBase'
-export { esSoloCaptura, usaFinanzas } from './permisosBase'
+export { esSoloCaptura, usaFinanzas, usaInventario } from './permisosBase'
 
 type UsuarioConRol = {
   id?: number | string
@@ -66,6 +66,20 @@ export const usaFinanzasOPanel: Access = async ({ req }) => {
 }
 export const nadie: Access = () => false
 
+/* Inventario (ELGO Inventario, fase A). */
+export const configuraInventario: Access = async ({ req }) => Boolean(req.user) && (await permisosDe(req)).inv.configurar
+/** Materiales y equivalencias también los da de alta quien confirma documentos (Compras), no solo quien configura. */
+export const editaCatalogoInventario: Access = async ({ req }) => {
+  if (!req.user) return false
+  const p = await permisosDe(req)
+  return p.inv.configurar || p.inv.confirmar
+}
+export const usaInventarioOPanel: Access = async ({ req }) => {
+  if (!req.user) return false
+  const p = await permisosDe(req)
+  return p.panel || usaInventario(p)
+}
+
 /* ─────────────── protección general de colecciones del sitio ─────────────── */
 
 /**
@@ -104,7 +118,7 @@ const OPERACIONES = ['read', 'create', 'update', 'delete', 'readVersions'] as co
 const CON_REGLAS_PROPIAS = new Set(['users', 'roles'])
 
 export function protegerColeccion(c: CollectionConfig): CollectionConfig {
-  if (CON_REGLAS_PROPIAS.has(c.slug) || c.slug.startsWith('fin-')) return c
+  if (CON_REGLAS_PROPIAS.has(c.slug) || c.slug.startsWith('fin-') || c.slug.startsWith('inv-')) return c
   const access = { ...(c.access ?? {}) } as NonNullable<CollectionConfig['access']>
   for (const op of OPERACIONES) {
     ;(access as Record<string, Access>)[op] = envolver((c.access as Record<string, Access> | undefined)?.[op])
@@ -113,7 +127,7 @@ export function protegerColeccion(c: CollectionConfig): CollectionConfig {
 }
 
 export function protegerGlobal(g: GlobalConfig): GlobalConfig {
-  if (g.slug.startsWith('fin-')) return g
+  if (g.slug.startsWith('fin-') || g.slug.startsWith('inv-')) return g
   const access = { ...(g.access ?? {}) } as NonNullable<GlobalConfig['access']>
   for (const op of ['read', 'update', 'readVersions'] as const) {
     ;(access as Record<string, Access>)[op] = envolver((g.access as Record<string, Access> | undefined)?.[op])

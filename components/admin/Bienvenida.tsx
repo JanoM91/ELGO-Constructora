@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import React from 'react'
 
 import { fechaLegible, partesLocales } from '../../lib/localTime'
-import { esSoloCaptura, permisosDe, usaFinanzas } from '../../lib/permisos'
+import { esSoloCaptura, permisosDe, usaFinanzas, usaInventario } from '../../lib/permisos'
 
 /**
  * Bienvenida del tablero del panel (heredada de MacAuto, docs/58 y docs/60).
@@ -41,13 +41,20 @@ export default async function Bienvenida({ payload, user }: ServerProps) {
 
   /* Quien solo registra entradas y gastos se va directo a Finanzas. */
   let conFinanzas = false
+  let conInventario = false
   if (payload && user) {
     const req = await createLocalReq({ user: user as Parameters<typeof createLocalReq>[0]['user'] }, payload)
     const p = await permisosDe(req)
-    if (esSoloCaptura(p)) redirect(`${rutaAdmin}/finanzas`)
+    /* Sin panel completo: directo a la app que usa (Finanzas primero; si solo usa Inventario, ahí). */
+    if (esSoloCaptura(p)) redirect(`${rutaAdmin}/${usaFinanzas(p) ? 'finanzas' : 'inventario'}`)
     conFinanzas = usaFinanzas(p)
+    conInventario = usaInventario(p)
   }
-  const accesos = conFinanzas ? [{ etiqueta: 'Finanzas', ruta: '/finanzas', destacado: true }, ...ACCESOS] : ACCESOS
+  const accesos = [
+    ...(conFinanzas ? [{ etiqueta: 'Finanzas', ruta: '/finanzas', destacado: true }] : []),
+    ...(conInventario ? [{ etiqueta: 'Inventario', ruta: '/inventario', destacado: true }] : []),
+    ...ACCESOS,
+  ]
 
   /* El usuario de Payload trae `email`; el nombre existe solo si la colección
      de usuarios lo define, así que se lee con cuidado. */
@@ -64,8 +71,8 @@ export default async function Bienvenida({ payload, user }: ServerProps) {
           {nombre ? `, ${nombre}` : ''}
         </h1>
         <p className="mx-bienvenida__bajada">
-          Las entradas y los gastos se registran en Finanzas. Aquí abajo administras personas,
-          roles y catálogos.
+          Las entradas y los gastos se registran en Finanzas; los materiales, cotizaciones y existencias, en Inventario.
+          Aquí abajo administras personas, roles y catálogos.
         </p>
       </div>
       <nav aria-label="Accesos directos" className="mx-bienvenida__acciones">

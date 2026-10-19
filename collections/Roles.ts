@@ -132,5 +132,37 @@ export const Roles: CollectionConfig = {
         },
       ],
     },
+    /* ELGO Inventario (fase A, octubre de 2026): catálogo de materiales, cotizaciones, precios, requisiciones y existencias. */
+    {
+      name: 'inventario',
+      label: 'Inventario',
+      type: 'group',
+      fields: [
+        { name: 'usar', label: 'Usar Inventario (catálogo y consultas)', type: 'checkbox', defaultValue: false },
+        { name: 'documentos', label: 'Subir cotizaciones, requisiciones y facturas, y revisar empates', type: 'checkbox', defaultValue: false },
+        {
+          name: 'confirmar',
+          label: 'Confirmar documentos y precios',
+          type: 'checkbox',
+          defaultValue: false,
+          admin: { description: 'Al confirmar se escribe el histórico de precios y las equivalencias. Incluye subir y revisar.' },
+        },
+        { name: 'verPrecios', label: 'Ver precios, comparativos y alertas', type: 'checkbox', defaultValue: false },
+        { name: 'requisiciones', label: 'Crear requisiciones de material', type: 'checkbox', defaultValue: false },
+        { name: 'movimientos', label: 'Registrar movimientos de existencias', type: 'checkbox', defaultValue: false },
+        { name: 'configurar', label: 'Configurar Inventario (proveedores, familias, ubicaciones y parámetros)', type: 'checkbox', defaultValue: false, admin: { description: 'Incluye todo lo anterior.' } },
+        {
+          name: 'obras',
+          label: 'Qué obras alcanza en Inventario',
+          type: 'select',
+          defaultValue: 'alcance',
+          options: [
+            { label: 'Solo las obras de su alcance en Finanzas (y la bodega)', value: 'alcance' },
+            { label: 'Todas', value: 'todas' },
+          ],
+          admin: { description: 'Un residente solo ve y mueve material de sus obras. Si en Finanzas ve «Todos», aquí también, salvo que elijas otra cosa.' },
+        },
+      ],
+    },
   ],
 }

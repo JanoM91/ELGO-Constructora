@@ -11,6 +11,8 @@ import { Users } from './collections/Users'
 import { Roles } from './collections/Roles'
 import { FinActividades, FinCategorias, FinConfiguracion, FinCuentas } from './collections/finanzas/catalogos'
 import { FinBitacora, FinComprobantes, FinMovimientos, FinOperaciones } from './collections/finanzas/registros'
+import { InvConfiguracion, InvEquivalencias, InvFamilias, InvMateriales, InvProveedores, InvUbicaciones } from './collections/inventario/catalogos'
+import { InvBitacora, InvDocumentos, InvMovimientos, InvPartidas, InvPrecios } from './collections/inventario/registros'
 import { protegerColeccion, protegerGlobal } from './lib/permisos'
 import { migrations } from './migrations'
 
@@ -58,8 +60,13 @@ export default buildConfig({
           Component: '/components/admin/finanzas/VistaFinanzas#default',
           path: '/finanzas',
         },
+        /* Inventario (ELGO Inventario, fase A): misma idea, en /admin/inventario. */
+        inventario: {
+          Component: '/components/admin/inventario/VistaInventario#default',
+          path: '/inventario',
+        },
       },
-      afterNavLinks: ['/components/admin/EnlaceFinanzas#default'],
+      afterNavLinks: ['/components/admin/EnlaceFinanzas#default', '/components/admin/EnlaceInventario#default'],
     },
   },
   /**
@@ -68,10 +75,12 @@ export default buildConfig({
    * para que una colección nueva quede protegida sin acordarse. Usuarios,
    * Roles y las de Finanzas traen sus propias reglas.
    */
-  collections: [Users, Roles, FinCuentas, FinCategorias, FinActividades, FinOperaciones, FinMovimientos, FinComprobantes, FinBitacora].map(
-    protegerColeccion,
-  ),
-  globals: [FinConfiguracion].map(protegerGlobal),
+  collections: [
+    Users, Roles,
+    FinCuentas, FinCategorias, FinActividades, FinOperaciones, FinMovimientos, FinComprobantes, FinBitacora,
+    InvProveedores, InvFamilias, InvMateriales, InvEquivalencias, InvUbicaciones, InvDocumentos, InvPartidas, InvPrecios, InvMovimientos, InvBitacora,
+  ].map(protegerColeccion),
+  globals: [FinConfiguracion, InvConfiguracion].map(protegerGlobal),
   /* Correo de recuperación de contraseña (Resend por HTTP). Sin RESEND_API_KEY no se envía nada. Ver lib/emailAdapter.ts. */
   email: resendEmailAdapter,
   i18n: {
