@@ -550,6 +550,99 @@ export function RegistrarMovimiento({ tipoInicial, materialInicial }: { tipoInic
   )
 }
 
+/* ───────────────────────── Importar lote ───────────────────────── */
+
+type ResultadoTanda = {
+  materialesNuevos: number; materialesExistentes: number; equivalenciasNuevas: number; documentosNuevos: number
+  documentosOmitidos: string[]; partidas: number; precios: number
+  alertas: { material: string; proveedor: string; antes: number; despues: number; variacionPct: number; fecha: string; folio: string }[]
+}
+const TANDA = 4
+
+/**
+ * Lotes de cotizaciones ya leídas por Claude (archivo .json). Se manda primero
+ * el catálogo y luego los documentos en tandas de 4, cada tanda en su propia
+ * transacción: si una falla, las anteriores quedan y basta con volver a subir
+ * el mismo archivo (lo ya importado se omite).
+ */
+function ImportarLote() {
+  const router = useRouter()
+  const [estado, setEstado] = useState<{ fase: string; hechos: number; total: number } | null>(null)
+  const [resumen, setResumen] = useState<ResultadoTanda | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  async function subir(archivo: File) {
+    setError(null)
+    setResumen(null)
+    let lote: { nombre?: string; documentos?: unknown[] }
+    try {
+      lote = JSON.parse(await archivo.text())
+    } catch {
+      setError('El archivo no es un lote válido (.json).')
+      return
+    }
+    const total = Array.isArray(lote.documentos) ? lote.documentos.length : 0
+    const suma: ResultadoTanda = { materialesNuevos: 0, materialesExistentes: 0, equivalenciasNuevas: 0, documentosNuevos: 0, documentosOmitidos: [], partidas: 0, precios: 0, alertas: [] }
+    const acumular = (r: ResultadoTanda) => {
+      suma.materialesNuevos += r.materialesNuevos; suma.equivalenciasNuevas += r.equivalenciasNuevas; suma.documentosNuevos += r.documentosNuevos
+      suma.documentosOmitidos.push(...r.documentosOmitidos); suma.partidas += r.partidas; suma.precios += r.precios; suma.alertas.push(...r.alertas)
+    }
+    try {
+      setEstado({ fase: 'Catálogo de materiales y equivalencias', hechos: 0, total })
+      const r0 = await api.post<ResultadoTanda>('importar?fase=catalogo', lote)
+      acumular({ ...r0, alertas: [] })
+      suma.materialesExistentes = r0.materialesExistentes
+      for (let desde = 0; desde < total; desde += TANDA) {
+        setEstado({ fase: 'Documentos, partidas y precios', hechos: desde, total })
+        const t = await api.post<ResultadoTanda>(`importar?fase=documentos&desde=${desde}&hasta=${desde + TANDA}`, lote)
+        acumular({ ...t, alertas: [] })
+      }
+      /* Las alertas se piden al final: las tandas no llegan en orden de fecha. */
+      suma.alertas = (await api.post<ResultadoTanda>('importar?fase=resumen', lote)).alertas
+      setEstado({ fase: 'Listo', hechos: total, total })
+      setResumen(suma)
+      router.refresh()
+    } catch (e) {
+      setError(`${(e as Error).message} Lo que ya entró se queda; vuelve a subir el mismo archivo para continuar (no se duplica).`)
+      setEstado(null)
+    }
+  }
+  const alertas = resumen ? [...resumen.alertas].sort((a, b) => Math.abs(b.variacionPct) - Math.abs(a.variacionPct)) : []
+  return (
+    <Paso n={5} titulo="Importar lote de cotizaciones">
+      <p className="fz-ayuda">Sube el archivo .json que prepara Claude a partir de los PDF de las tiendas. Crea los materiales que falten, guarda cada cotización con sus partidas y alimenta el histórico de precios. Subir el mismo archivo dos veces no duplica nada.</p>
+      {error && <Aviso tono="malo">{error}</Aviso>}
+      {estado && estado.fase !== 'Listo' && (
+        <Aviso tono="info">{estado.fase}… {estado.total ? `${Math.min(estado.hechos, estado.total)} de ${estado.total} documentos` : ''}. No cierres esta pantalla.</Aviso>
+      )}
+      <label className="fz-btn fz-btn--navy fz-btn--chico" style={{ alignSelf: 'flex-start', cursor: 'pointer' }}>
+        Elegir archivo .json
+        <input type="file" accept="application/json,.json" style={{ display: 'none' }} disabled={Boolean(estado && estado.fase !== 'Listo')} onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = '' }} />
+      </label>
+      {resumen && (
+        <div className="fz-stack fz-stack--chico">
+          <Aviso tono="ok">Listo: {resumen.materialesNuevos} materiales nuevos ({resumen.materialesExistentes} ya existían), {resumen.equivalenciasNuevas} equivalencias, {resumen.documentosNuevos} documentos, {resumen.partidas} partidas y {resumen.precios} precios en el histórico.{resumen.documentosOmitidos.length ? ` Omitidos por ya existir: ${resumen.documentosOmitidos.length}.` : ''}</Aviso>
+          {alertas.length > 0 && (
+            <>
+              <h3>{alertas.length} cambio{alertas.length === 1 ? '' : 's'} de precio mayor{alertas.length === 1 ? '' : 'es'} al umbral</h3>
+              <div className="fz-tarjeta fz-lista">
+                {alertas.map((a, i) => (
+                  <div key={i} className="fz-fila">
+                    <span className="fz-fila__main">
+                      <span className="fz-fila__t1" style={{ whiteSpace: 'normal' }}>{a.material}</span>
+                      <span className="fz-fila__t2">{a.proveedor} · {fecha(a.fecha, true)} · {a.folio} · antes ${a.antes.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                    </span>
+                    <span className={`fz-monto${a.variacionPct < 0 ? ' is-entra' : ''}`}>{a.variacionPct > 0 ? '+' : ''}{a.variacionPct.toFixed(1)}%<small className="fz-tenue" style={{ display: 'block', fontSize: 12 }}>${a.despues.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</small></span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Paso>
+  )
+}
+
 /* ───────────────────────── Configuración ───────────────────────── */
 
 function Paso({ n, hecho, titulo, children }: { n: number; hecho?: boolean; titulo: string; children: React.ReactNode }) {
@@ -614,8 +707,9 @@ export function Configuracion() {
           </Paso>
         </>
       )}
+      {p.configurar && <ImportarLote />}
       {p.gestionarUsuarios && (
-        <Paso n={5} titulo="Roles">
+        <Paso n={6} titulo="Roles">
           <p className="fz-ayuda">En cada rol hay un grupo «Inventario» con sus casillas. Sugerencia: Dueño todo; Compras confirmar, requisiciones y movimientos con todas las obras; Administración subir y confirmar; Residente requisiciones y movimientos solo de sus obras.</p>
           <div className="fz-chips"><a className="fz-btn fz-btn--claro fz-btn--chico" href={`${rutaAdmin}/collections/roles`}>Editar roles</a></div>
         </Paso>

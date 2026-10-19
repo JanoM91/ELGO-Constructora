@@ -78,7 +78,7 @@ export async function contextoDesdeReq(req: PayloadRequest): Promise<Ctx | null>
   return { payload: req.payload, req, user: req.user as User, p, hoy: diaEnZona(new Date(), site.location.timeZone) }
 }
 
-async function enTransaccion<T>(ctx: Ctx, fn: (req: PayloadRequest) => Promise<T>): Promise<T> {
+export async function enTransaccion<T>(ctx: Ctx, fn: (req: PayloadRequest) => Promise<T>): Promise<T> {
   const req = await createLocalReq({ user: ctx.user as User & { collection: 'users' } }, ctx.payload)
   const propia = await initTransaction(req)
   try {
@@ -520,12 +520,14 @@ const FAMILIAS_SUGERIDAS: { nombre: string; hijas: string[] }[] = [
   { nombre: 'Otros', hijas: [] },
 ]
 
-export async function arranque(ctx: Ctx, entrada: unknown): Promise<ResultadoArranqueInventario> {
+/** `reqExterno`: para correr dentro de una transacción ya abierta (importación de lotes). */
+export async function arranque(ctx: Ctx, entrada: unknown, reqExterno?: PayloadRequest): Promise<ResultadoArranqueInventario> {
   exigir(ctx, 'configurar')
   const d = z.object({ que: z.array(z.enum(['proveedores', 'familias', 'ubicaciones'])).min(1) }).safeParse(entrada)
   if (!d.success) throw invalido('Petición no válida.')
   const r: ResultadoArranqueInventario = { proveedores: 0, familias: 0, ubicaciones: 0, yaExistian: [] }
-  await enTransaccion(ctx, async (req) => {
+  const correr = reqExterno ? (fn: (req: PayloadRequest) => Promise<void>) => fn(reqExterno) : (fn: (req: PayloadRequest) => Promise<void>) => enTransaccion(ctx, fn)
+  await correr(async (req) => {
     if (d.data.que.includes('proveedores')) {
       const ya = await ctx.payload.find({ collection: 'inv-proveedores', depth: 0, pagination: false, limit: 200, overrideAccess: true, select: { nombre: true } })
       const nombres = new Set(ya.docs.map((x) => x.nombre))

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 
+import { importarLote } from '@/lib/inventario/importacion'
 import {
   anularMovimiento,
   arranque,
@@ -9,6 +10,7 @@ import {
   contextoDesdeHeaders,
   crearMaterial,
   type Ctx,
+  enTransaccion,
   ErrorInventario,
   existencias,
   material,
@@ -35,12 +37,14 @@ import {
  *   POST movimientos                      entrada, salida, traspaso, devolución, ajuste, merma, apertura
  *   POST movimientos/:id/anulacion
  *   POST arranque                         { que: ['proveedores','familias','ubicaciones'] }
+ *   POST importar?fase=catalogo|documentos&desde&hasta   lote JSON ya revisado (lib/inventario/importacion.ts)
  *
  * Los POST que crean algo aceptan `Idempotency-Key`: un reintento no duplica.
  */
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+/* La importación de una tanda de documentos puede tardar más que una consulta normal. */
+export const maxDuration = 300
 
 type Contexto = { params: Promise<{ ruta?: string[] }> }
 
@@ -98,6 +102,11 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
       return json({ ok: true })
     }
     if (a === 'arranque' && !b) return json(await arranque(ctx, await leerJson(req)))
+    if (a === 'importar' && !b) {
+      const fase = q.get('fase') === 'documentos' ? 'documentos' : q.get('fase') === 'resumen' ? 'resumen' : 'catalogo'
+      const lote = await leerJson(req)
+      return json(await enTransaccion(ctx, (tx) => importarLote(ctx, lote, tx, { fase, desde: numero(q.get('desde')) ?? 0, hasta: numero(q.get('hasta')) ?? undefined })))
+    }
   }
   return json({ error: 'Ruta no encontrada.' }, 404)
 }

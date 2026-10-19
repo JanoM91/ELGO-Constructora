@@ -23,7 +23,7 @@
 
 /* ───────────────────────────── unidades ───────────────────────────── */
 
-export type UnidadBase = 'pieza' | 'metro' | 'kilogramo' | 'tramo' | 'rollo' | 'caja' | 'lote' | 'juego' | 'litro' | 'bolsa' | 'par'
+export type UnidadBase = 'pieza' | 'metro' | 'kilogramo' | 'tramo' | 'rollo' | 'caja' | 'lote' | 'juego' | 'litro' | 'bolsa' | 'par' | 'paquete' | 'cubeta'
 
 export const UNIDADES_BASE: { value: UnidadBase; label: string; abrev: string }[] = [
   { value: 'pieza', label: 'Pieza', abrev: 'pza' },
@@ -37,6 +37,8 @@ export const UNIDADES_BASE: { value: UnidadBase; label: string; abrev: string }[
   { value: 'litro', label: 'Litro', abrev: 'l' },
   { value: 'bolsa', label: 'Bolsa', abrev: 'bolsa' },
   { value: 'par', label: 'Par', abrev: 'par' },
+  { value: 'paquete', label: 'Paquete', abrev: 'paq' },
+  { value: 'cubeta', label: 'Cubeta', abrev: 'cubeta' },
 ]
 
 const ALIAS_UNIDAD: Record<string, UnidadBase> = {
@@ -51,6 +53,9 @@ const ALIAS_UNIDAD: Record<string, UnidadBase> = {
   l: 'litro', lt: 'litro', lts: 'litro', litro: 'litro', litros: 'litro',
   bolsa: 'bolsa', bolsas: 'bolsa',
   par: 'par', pares: 'par',
+  paquete: 'paquete', paquetes: 'paquete', paq: 'paquete', pqt: 'paquete',
+  cubeta: 'cubeta', cubetas: 'cubeta', cub: 'cubeta',
+  h87: 'pieza',
 }
 
 /** «PZAS.» → 'pieza'; «Mtr» → 'metro'; algo desconocido → null. */

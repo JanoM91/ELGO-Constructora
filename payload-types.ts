@@ -528,7 +528,19 @@ export interface InvMaterial {
    * En qué unidad se guardan precios y existencias. Si una tienda cotiza en otra (tramo, kg), se convierte con un factor.
    */
   unidadBase:
-    'pieza' | 'metro' | 'kilogramo' | 'tramo' | 'rollo' | 'caja' | 'lote' | 'juego' | 'litro' | 'bolsa' | 'par';
+    | 'pieza'
+    | 'metro'
+    | 'kilogramo'
+    | 'tramo'
+    | 'rollo'
+    | 'caja'
+    | 'lote'
+    | 'juego'
+    | 'litro'
+    | 'bolsa'
+    | 'par'
+    | 'paquete'
+    | 'cubeta';
   /**
    * Tableros, interruptores y lo que un ingeniero debe revisar antes de comprar.
    */

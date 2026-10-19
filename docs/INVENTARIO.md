@@ -37,7 +37,21 @@ Un rol con obras «Solo las de su alcance» ve y mueve material únicamente de l
 - Pantallas en `components/admin/inventario/` reutilizando los estilos y piezas de Finanzas (`fz-*`, `comun.tsx` de Finanzas). Probadas a 320, 390 y 1280 px.
 - Precios: en la base en pesos sin IVA por unidad base; en el servicio y la API, centavos enteros (`...Centavos`).
 
-## 5. Lo que sigue (fases B–F del prompt maestro)
+## 5. Importar lotes de cotizaciones (19-oct-2026)
+
+Puente hasta la fase B. Claude lee los PDF de las tiendas fuera de la app y arma un **lote** (`.json`, fuera del repositorio: los datos de ELGO son confidenciales) con materiales propuestos, equivalencias (clave de la tienda → material) y documentos con sus partidas ya empatadas.
+
+**Cómo se sube:** Inventario → Configuración → «5 · Importar lote de cotizaciones» → elegir el archivo. La pantalla manda primero el catálogo y luego los documentos en tandas de 4 (cada tanda en su propia transacción, `maxDuration` 300 s); al final pide el resumen de alertas. Si algo falla, lo que entró se queda y basta con volver a subir el mismo archivo: lo ya importado se omite. Permiso: «Configurar Inventario».
+
+**Reglas** (`lib/inventario/importacion.ts`): un material se reconoce por su equivalencia (proveedor + clave + texto) o por marca + número de parte; un documento por proveedor + folio + versión + archivo. Solo las partidas con `aportaPrecio` escriben en `inv-precios`. Al final se recalculan, por material y proveedor, la variación contra el precio anterior (alerta arriba del umbral), el último precio y el precio de referencia.
+
+**Versiones de un mismo folio** (decisión de Jano): archivos idénticos se guardan una vez; si hay versión marcada «OK», esa manda; si no, solo entran al histórico los precios que no se contradicen entre versiones, y las partidas en conflicto quedan con la observación `precio_entre_versiones`.
+
+**Desde la terminal** (base local para probar): `npx payload run scripts/importarLote.ts -- lote.json [correo]`. Todo en una transacción.
+
+**Lote 1** (19-oct-2026): 37 PDF de Eléctrico (36 cotizaciones y la factura XF 41400, ago–oct 2026) → 231 materiales, 232 equivalencias, 35 documentos, 845 partidas, 431 precios, 17 alertas. Unidades nuevas `paquete` y `cubeta` (migración `20261019_180537_unidades_paquete_cubeta`).
+
+## 6. Lo que sigue (fases B–F del prompt maestro)
 
 B: subir cotización/requisición/factura (PDF, foto, Excel) → Claude extrae partidas → empate con el catálogo (número de parte, clave de proveedor, equivalencia previa, descripción) → revisión humana → confirmar: escribe `inv-precios` y `inv-equivalencias`. C: cuadro comparativo por requisición, alertas de variación por proveedor, concentración del gasto. D: requisiciones con pronóstico y cobertura. E: entrada desde documento con foto, sugerencia de surtir de bodega. F: cierre y documentación.
 

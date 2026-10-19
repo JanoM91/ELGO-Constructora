@@ -26,8 +26,8 @@ function ok(cond, texto) {
 }
 
 console.log('\nUnidades')
-ok(normalizarUnidad('PZAS.') === 'pieza' && normalizarUnidad('Mtr') === 'metro' && normalizarUnidad('KG') === 'kilogramo' && normalizarUnidad('tramos') === 'tramo', 'Reconoce pza, mtr, kg y tramos')
-ok(normalizarUnidad('cubeta') === null && normalizarUnidad('') === null, 'Lo desconocido devuelve null, no adivina')
+ok(normalizarUnidad('PAQUETE') === 'paquete' && normalizarUnidad('H87') === 'pieza' && normalizarUnidad('PZAS.') === 'pieza' && normalizarUnidad('Mtr') === 'metro' && normalizarUnidad('KG') === 'kilogramo' && normalizarUnidad('tramos') === 'tramo', 'Reconoce pza, mtr, kg y tramos')
+ok(normalizarUnidad('tonel') === null && normalizarUnidad('') === null, 'Lo desconocido devuelve null, no adivina')
 ok(factorDeConversion('pieza', 'pieza') === 1, 'Misma unidad: factor 1')
 ok(factorDeConversion('tramo', 'metro', { longitudTramo: 3.05 }) === 3.05, '1 tramo = 3.05 m si el material tiene longitud')
 ok(factorDeConversion('tramo', 'metro', {}) === null, 'Tramo → metro sin longitud: null (lo resuelve una persona)')
