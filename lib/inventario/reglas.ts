@@ -84,6 +84,8 @@ export function factorDeConversion(unidadDoc: UnidadBase | null, unidadBase: Uni
   if (unidadDoc === unidadBase) return 1
   const largo = atributos.longitudTramo ?? null
   const peso = atributos.pesoPorMetroKg ?? null
+  /* Un tramo de tubo es una pieza: las tiendas lo cotizan de las dos formas. */
+  if ((unidadDoc === 'tramo' && unidadBase === 'pieza') || (unidadDoc === 'pieza' && unidadBase === 'tramo')) return 1
   if (unidadDoc === 'tramo' && unidadBase === 'metro') return largo && largo > 0 ? largo : null
   if (unidadDoc === 'metro' && unidadBase === 'tramo') return largo && largo > 0 ? 1 / largo : null
   if (unidadDoc === 'kilogramo' && unidadBase === 'metro') return peso && peso > 0 ? 1 / peso : null

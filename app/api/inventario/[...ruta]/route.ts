@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 
+import { analizar, buscarMateriales, calcular, guardarAnalisis, type LecturaDocumento } from '@/lib/inventario/analisis'
 import { importarLote } from '@/lib/inventario/importacion'
 import {
   anularMovimiento,
@@ -38,6 +39,12 @@ import {
  *   POST movimientos/:id/anulacion
  *   POST arranque                         { que: ['proveedores','familias','ubicaciones'] }
  *   POST importar?fase=catalogo|documentos&desde&hasta   lote JSON ya revisado (lib/inventario/importacion.ts)
+ *
+ * Analizar documento (lib/inventario/analisis.ts):
+ *   POST analizar             multipart: archivo (PDF/foto) y/o texto, nombre, proveedor → lectura + empate + cálculo (no guarda)
+ *   POST analizar/calcular    { proveedor, renglones } → existencias, faltante y precios otra vez
+ *   POST analizar/guardar     documento revisado → histórico (Idempotency-Key)
+ *   GET  analizar/buscar?texto  materiales para «Cambiar material»
  *
  * Los POST que crean algo aceptan `Idempotency-Key`: un reintento no duplica.
  */
@@ -90,6 +97,7 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
     if (a === 'materiales' && !b) return json(await materiales(ctx, { texto: q.get('texto') ?? undefined, familia: numero(q.get('familia')), activos: q.get('activos') ?? undefined, pagina: numero(q.get('pagina')) ?? 1 }))
     if (a === 'materiales' && b && !c) return json(await material(ctx, idDeRuta(b)))
     if (a === 'existencias' && !b) return json(await existencias(ctx, { ubicacion: numero(q.get('ubicacion')), texto: q.get('texto') ?? undefined }))
+    if (a === 'analizar' && b === 'buscar') return json(await buscarMateriales(ctx, q.get('texto') ?? ''))
     if (a === 'movimientos' && !b) return json(await movimientos(ctx, { material: numero(q.get('material')), ubicacion: numero(q.get('ubicacion')), desde: q.get('desde') ?? undefined, hasta: q.get('hasta') ?? undefined, pagina: numero(q.get('pagina')) ?? 1 }))
   } else {
     if (a === 'materiales' && !b) return json(await crearMaterial(ctx, await leerJson(req)), 201)
@@ -102,6 +110,32 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
       return json({ ok: true })
     }
     if (a === 'arranque' && !b) return json(await arranque(ctx, await leerJson(req)))
+    if (a === 'analizar' && !b) {
+      let form: FormData
+      try {
+        form = await req.formData()
+      } catch {
+        throw new ErrorInventario(400, 'No llegó el archivo. Si pesa mucho, súbelo por partes.')
+      }
+      const archivo = form.get('archivo')
+      const texto = form.get('texto')
+      const prov = numero(String(form.get('proveedor') ?? ''))
+      /* Solo para probar sin llave de Claude en una base local: nunca se activa en Vercel. */
+      const prueba = process.env.INVENTARIO_LECTURA_PRUEBA === '1' && typeof form.get('lectura') === 'string' ? (JSON.parse(String(form.get('lectura'))) as LecturaDocumento) : undefined
+      return json(await analizar(ctx, { archivo: archivo instanceof File ? archivo : null, texto: typeof texto === 'string' ? texto : null, nombre: typeof form.get('nombre') === 'string' ? String(form.get('nombre')) : archivo instanceof File ? archivo.name : null, proveedor: prov }, prueba))
+    }
+    if (a === 'analizar' && b === 'calcular') {
+      const e = (await leerJson(req)) as { proveedor?: unknown; renglones?: unknown }
+      const renglones = Array.isArray(e.renglones) ? e.renglones.slice(0, 400).map((r: Record<string, unknown>) => ({
+        linea: Number(r.linea) || 0,
+        material: Number.isInteger(r.material) ? Number(r.material) : null,
+        cantidad: typeof r.cantidad === 'number' && r.cantidad > 0 ? r.cantidad : null,
+        factor: typeof r.factor === 'number' && r.factor > 0 ? r.factor : null,
+        precioUnitarioCentavos: Number.isInteger(r.precioUnitarioCentavos) ? Number(r.precioUnitarioCentavos) : null,
+      })) : []
+      return json(await calcular(ctx, Number.isInteger(e.proveedor) ? Number(e.proveedor) : null, renglones))
+    }
+    if (a === 'analizar' && b === 'guardar') return json(await guardarAnalisis(ctx, await leerJson(req), clave), 201)
     if (a === 'importar' && !b) {
       const fase = q.get('fase') === 'documentos' ? 'documentos' : q.get('fase') === 'resumen' ? 'resumen' : 'catalogo'
       const lote = await leerJson(req)

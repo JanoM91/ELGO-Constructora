@@ -44,6 +44,8 @@ const EsquemaLote = z.object({
   materiales: z.array(
     z.object({
       ref: z.string(),
+      /** Clave de un material que ya existe (MAT-000123): no se crea nada, solo se usa. */
+      existente: z.string().regex(/^MAT-\d{6}$/).optional(),
       descripcion: z.string().min(2),
       familia: z.string(),
       marca: z.string().nullable(),
@@ -141,6 +143,66 @@ async function resumenDeAlertas(ctx: Ctx, lote: Lote, req: PayloadRequest, r: Re
 
 const idDe = (v: unknown): number | null => (v == null ? null : typeof v === 'object' ? Number((v as { id: unknown }).id) : Number(v))
 
+
+export type AlertaPrecio = ResultadoImportacion['alertas'][number]
+
+/**
+ * Por cada material tocado: variación de cada precio contra el anterior del
+ * mismo proveedor (alerta si supera el umbral), último precio y precio de
+ * referencia (el más barato entre los últimos de cada proveedor). Devuelve
+ * solo las alertas de los precios recién guardados. Lo usan la importación de
+ * lotes y «Analizar documento».
+ */
+export async function recalcularPrecios(ctx: Ctx, req: PayloadRequest, tocados: Set<string>, preciosNuevos: Set<number>): Promise<AlertaPrecio[]> {
+  const { payload } = ctx
+  const local = { req, overrideAccess: true, depth: 0 } as const
+  const alertas: AlertaPrecio[] = []
+  const conf = await payload.findGlobal({ slug: 'inv-configuracion', overrideAccess: true, req })
+  const umbral = typeof conf?.umbralAlertaPrecio === 'number' ? conf.umbralAlertaPrecio : 5
+  const materialesTocados = new Set([...tocados].map((k) => Number(k.split('|')[0])))
+  for (const material of materialesTocados) {
+    const precios = (await payload.find({
+      collection: 'inv-precios', pagination: false, limit: 10000, req, overrideAccess: true, depth: 1,
+      where: { and: [{ material: { equals: material } }, { anulado: { not_equals: true } }] },
+      populate: { 'inv-documentos': { folio: true, version: true }, 'inv-proveedores': { nombreCorto: true }, 'inv-materiales': { descripcion: true } },
+    })).docs
+    const orden = (x: (typeof precios)[number]) => {
+      const doc = x.documento as { folio?: string; version?: number } | null
+      return `${x.fecha}|${doc?.folio ?? ''}|${String(doc?.version ?? 0).padStart(3, '0')}|${String(x.id).padStart(8, '0')}`
+    }
+    precios.sort((a, b) => (orden(a) < orden(b) ? -1 : 1))
+    const ultimoPorProveedor = new Map<number, (typeof precios)[number]>()
+    for (const p of precios) {
+      const prov = idDe(p.proveedor) as number
+      const anterior = ultimoPorProveedor.get(prov)
+      if (anterior && aCentavos(anterior.precioBase) !== aCentavos(p.precioBase)) {
+        const v = variacionPct(aCentavos(anterior.precioBase), aCentavos(p.precioBase))
+        const alerta = esAlertaDePrecio(v, umbral)
+        const partida = idDe(p.partida)
+        if (partida) await payload.update({ collection: 'inv-partidas', id: partida, ...local, data: { variacionPct: v, alertaPrecio: alerta } })
+        if (alerta && v != null && preciosNuevos.has(p.id)) {
+          const prov = p.proveedor as { nombreCorto?: string }
+          const doc = p.documento as { folio?: string }
+          alertas.push({ material: (await payload.findByID({ collection: 'inv-materiales', id: material, ...local, select: { descripcion: true } })).descripcion, proveedor: prov?.nombreCorto ?? '', antes: anterior.precioBase, despues: p.precioBase, variacionPct: v, fecha: p.fecha, folio: doc?.folio ?? '' })
+        }
+      }
+      ultimoPorProveedor.set(prov, p)
+    }
+    const ultimos = [...ultimoPorProveedor.values()]
+    const masReciente = precios[precios.length - 1]
+    const referencia = ultimos.reduce((min, p) => (min == null || aCentavos(p.precioBase) < aCentavos(min.precioBase) ? p : min), null as (typeof precios)[number] | null)
+    await payload.update({
+      collection: 'inv-materiales', id: material, ...local,
+      data: {
+        ultimoPrecio: masReciente ? { precioBase: masReciente.precioBase, proveedor: idDe(masReciente.proveedor), fecha: masReciente.fecha } : undefined,
+        precioReferencia: referencia ? aPesos(aCentavos(referencia.precioBase)) : null,
+      },
+    })
+  }
+
+  return alertas
+}
+
 /**
  * Por pasos, para que ninguna petición rebase el tiempo de Vercel:
  *   fase «catalogo»   → familias, proveedor, materiales y equivalencias;
@@ -213,7 +275,20 @@ export async function importarLote(ctx: Ctx, entrada: unknown, req: PayloadReque
   const porNumeroParte = new Map(existentes.filter((m) => m.marca && m.numeroParte).map((m) => [`${m.marca}|${normalizarNumeroParte(m.numeroParte)}`, m.id]))
   const idMaterial = new Map<string, number>()
   const equivDe = new Map(lote.equivalencias.map((e) => [e.material, e]))
+  const claves = lote.materiales.filter((m) => m.existente).map((m) => m.existente as string)
+  const porClaveMat = new Map<string, number>()
+  if (claves.length) {
+    const r0 = await payload.find({ collection: 'inv-materiales', where: { clave: { in: claves } }, pagination: false, limit: claves.length, ...local, select: { clave: true } })
+    for (const d of r0.docs) if (d.clave) porClaveMat.set(d.clave, d.id)
+  }
   for (const m of lote.materiales) {
+    if (m.existente) {
+      const id = porClaveMat.get(m.existente)
+      if (!id) throw new ErrorInventario(400, `El material ${m.existente} no existe en el catálogo.`)
+      idMaterial.set(m.ref, id)
+      r.materialesExistentes++
+      continue
+    }
     const e = equivDe.get(m.ref)
     const ya = (e && porClave.get(`${idProveedor(e.proveedor)}|${e.claveProveedor}|${e.textoOriginal}`)) || (m.marca && m.numeroParte ? porNumeroParte.get(`${m.marca}|${normalizarNumeroParte(m.numeroParte)}`) : undefined)
     if (ya) {
@@ -307,48 +382,7 @@ export async function importarLote(ctx: Ctx, entrada: unknown, req: PayloadReque
   }
 
   /* 5. Variación contra el precio anterior del mismo proveedor, último precio y precio de referencia. */
-  const conf = await payload.findGlobal({ slug: 'inv-configuracion', overrideAccess: true, req })
-  const umbral = typeof conf?.umbralAlertaPrecio === 'number' ? conf.umbralAlertaPrecio : 5
-  const materialesTocados = new Set([...tocados].map((k) => Number(k.split('|')[0])))
-  for (const material of materialesTocados) {
-    const precios = (await payload.find({
-      collection: 'inv-precios', pagination: false, limit: 10000, req, overrideAccess: true, depth: 1,
-      where: { and: [{ material: { equals: material } }, { anulado: { not_equals: true } }] },
-      populate: { 'inv-documentos': { folio: true, version: true }, 'inv-proveedores': { nombreCorto: true }, 'inv-materiales': { descripcion: true } },
-    })).docs
-    const orden = (x: (typeof precios)[number]) => {
-      const doc = x.documento as { folio?: string; version?: number } | null
-      return `${x.fecha}|${doc?.folio ?? ''}|${String(doc?.version ?? 0).padStart(3, '0')}|${String(x.id).padStart(8, '0')}`
-    }
-    precios.sort((a, b) => (orden(a) < orden(b) ? -1 : 1))
-    const ultimoPorProveedor = new Map<number, (typeof precios)[number]>()
-    for (const p of precios) {
-      const prov = idDe(p.proveedor) as number
-      const anterior = ultimoPorProveedor.get(prov)
-      if (anterior && aCentavos(anterior.precioBase) !== aCentavos(p.precioBase)) {
-        const v = variacionPct(aCentavos(anterior.precioBase), aCentavos(p.precioBase))
-        const alerta = esAlertaDePrecio(v, umbral)
-        const partida = idDe(p.partida)
-        if (partida) await payload.update({ collection: 'inv-partidas', id: partida, ...local, data: { variacionPct: v, alertaPrecio: alerta } })
-        if (alerta && v != null && preciosNuevos.has(p.id)) {
-          const prov = p.proveedor as { nombreCorto?: string }
-          const doc = p.documento as { folio?: string }
-          r.alertas.push({ material: (await payload.findByID({ collection: 'inv-materiales', id: material, ...local, select: { descripcion: true } })).descripcion, proveedor: prov?.nombreCorto ?? '', antes: anterior.precioBase, despues: p.precioBase, variacionPct: v, fecha: p.fecha, folio: doc?.folio ?? '' })
-        }
-      }
-      ultimoPorProveedor.set(prov, p)
-    }
-    const ultimos = [...ultimoPorProveedor.values()]
-    const masReciente = precios[precios.length - 1]
-    const referencia = ultimos.reduce((min, p) => (min == null || aCentavos(p.precioBase) < aCentavos(min.precioBase) ? p : min), null as (typeof precios)[number] | null)
-    await payload.update({
-      collection: 'inv-materiales', id: material, ...local,
-      data: {
-        ultimoPrecio: masReciente ? { precioBase: masReciente.precioBase, proveedor: idDe(masReciente.proveedor), fecha: masReciente.fecha } : undefined,
-        precioReferencia: referencia ? aPesos(aCentavos(referencia.precioBase)) : null,
-      },
-    })
-  }
+  r.alertas.push(...(await recalcularPrecios(ctx, req, tocados, preciosNuevos)))
 
   await payload.create({
     collection: 'inv-bitacora', ...local,

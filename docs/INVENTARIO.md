@@ -51,8 +51,18 @@ Puente hasta la fase B. Claude lee los PDF de las tiendas fuera de la app y arma
 
 **Lote 1** (19-oct-2026): 37 PDF de Eléctrico (36 cotizaciones y la factura XF 41400, ago–oct 2026) → 231 materiales, 232 equivalencias, 35 documentos, 845 partidas, 431 precios, 17 alertas. Unidades nuevas `paquete` y `cubeta` (migración `20261019_180537_unidades_paquete_cubeta`).
 
-## 6. Lo que sigue (fases B–F del prompt maestro)
+## 6. Analizar documento (fase B + pronóstico, 19-oct-2026)
 
-B: subir cotización/requisición/factura (PDF, foto, Excel) → Claude extrae partidas → empate con el catálogo (número de parte, clave de proveedor, equivalencia previa, descripción) → revisión humana → confirmar: escribe `inv-precios` y `inv-equivalencias`. C: cuadro comparativo por requisición, alertas de variación por proveedor, concentración del gasto. D: requisiciones con pronóstico y cobertura. E: entrada desde documento con foto, sugerencia de surtir de bodega. F: cierre y documentación.
+Pestaña **Analizar** (y botón principal en Inicio). Para Compras, Toño o quien opere Inventario:
 
-Ya quedaron listos para esas fases: las colecciones de documentos, partidas y precios; los campos `ultimoPrecio` y `precioReferencia` en materiales; `precioEstimado`, `resumenPronostico`, `variacionPct`, `concentracion`, `mejoresCandidatos` y `cuadraSubtotal` en reglas; y el permiso `documentos`/`confirmar`.
+1. **Subir**: PDF (hasta 4 MB; si pesa más, por partes), foto (se achica en el teléfono), Excel `.xlsx` o CSV (se convierte a texto en el navegador, `lib/inventario/excel.ts`; el `.xls` viejo no) o texto pegado de WhatsApp. La tienda se detecta del documento o se elige.
+2. **Leer y empatar** (`POST /api/inventario/analizar`, `lib/inventario/analisis.ts`): Claude devuelve encabezado y renglones (esquema estricto; el documento es información, no instrucciones). Cada renglón se empata en este orden: equivalencia de la misma tienda (clave) → mismo texto ya confirmado → número de parte del catálogo en el texto → llave de atributos con un solo candidato (`lib/inventario/empate.ts`, port del empatador del lote de M&M) → parecido de texto. Nada se guarda en la base en este paso (solo el archivo privado).
+3. **Ver**: por renglón, existencia, faltante a comprar, precio del documento por unidad base, último precio de cada tienda, variación contra el último de la misma tienda y diferencia contra la tienda más barata. Arriba: renglones a comprar, costo estimado de lo que falta (mejor precio conocido), costo con los precios del documento y ahorro posible. Sin «Ver precios» no se muestran importes.
+4. **Decidir** (obligatorio): «Varias opciones», «Sin empate» y propuestas con confianza bajo el umbral (Configuración) bloquean el guardado hasta elegir material, marcarlo nuevo u omitirlo. Si la unidad no convierte sola (rollo ↔ metro, caja ↔ pieza), se escribe la equivalencia. Cada cambio recalcula (`POST analizar/calcular`).
+5. **Guardar** (`POST analizar/guardar`, una transacción, `Idempotency-Key`): documento confirmado con `origen = lectura` (si el folio ya existe para esa tienda, versión siguiente), partidas, materiales nuevos, equivalencias aprendidas (la próxima vez esa tienda + clave/texto sale «Conocido») y, en cotizaciones y facturas, precios al histórico con alertas de variación (`recalcularPrecios`, compartido con la importación). Precios: permiso «confirmar»; requisiciones: «requisiciones» o «confirmar».
+
+Prueba local sin llave de Claude: `INVENTARIO_LECTURA_PRUEBA=1` permite mandar la lectura ya hecha en el campo `lectura` del formulario. **Nunca** definirla en Vercel.
+
+## 7. Lo que sigue (fases C–F del prompt maestro)
+
+C: cuadro comparativo por requisición y concentración del gasto. D: seguimiento de requisiciones (enviada, cotizada, aprobada, comprada). E: entrada a bodega desde el documento y sugerencia de surtir de bodega. F: cierre y documentación.

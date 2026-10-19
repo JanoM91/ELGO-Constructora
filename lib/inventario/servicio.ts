@@ -122,11 +122,11 @@ const nombreUsuario = (u: unknown): Ref => {
 const textoCorto = (s: unknown, max = 200) => String(s ?? '').trim().slice(0, max)
 const centavosDe = (pesos: unknown): number | null => (pesos == null || pesos === '' ? null : aCentavos(pesos))
 
-async function bitacora(ctx: Ctx, req: PayloadRequest, data: { coleccion: string; registro?: number | null; documento?: number | null; accion: 'crear' | 'subir' | 'empatar' | 'confirmar' | 'anular' | 'movimiento' | 'corregir' | 'arranque'; campo?: string | null; valorAnterior?: string | null; valorNuevo?: string | null; motivo?: string | null }) {
+export async function bitacora(ctx: Ctx, req: PayloadRequest, data: { coleccion: string; registro?: number | null; documento?: number | null; accion: 'crear' | 'subir' | 'empatar' | 'confirmar' | 'anular' | 'movimiento' | 'corregir' | 'arranque'; campo?: string | null; valorAnterior?: string | null; valorNuevo?: string | null; motivo?: string | null }) {
   await ctx.payload.create({ collection: 'inv-bitacora', req, overrideAccess: true, data: { ...data, usuario: ctx.user.id } })
 }
 
-async function configuracion(ctx: Ctx) {
+export async function configuracion(ctx: Ctx) {
   const g = await ctx.payload.findGlobal({ slug: 'inv-configuracion', depth: 0, overrideAccess: true })
   return {
     tasaIva: typeof g?.tasaIva === 'number' ? g.tasaIva : 16,
@@ -151,7 +151,7 @@ export function permisosVista(ctx: Ctx, obras: Ref[] = []): PermisosInventarioVi
   }
 }
 
-function exigir(ctx: Ctx, casilla: keyof Permisos['inv'], mensaje?: string) {
+export function exigir(ctx: Ctx, casilla: keyof Permisos['inv'], mensaje?: string) {
   if (ctx.p.superadmin) return
   if (!ctx.p.inv[casilla]) throw prohibido(mensaje)
 }
@@ -217,7 +217,7 @@ function vistaMaterial(m: InvMaterial): MaterialVista {
 }
 
 /** Mapa de existencias «material|ubicacion» → cantidad, solo de las ubicaciones alcanzables. */
-async function mapaExistencias(ctx: Ctx, materiales?: number[]): Promise<{ mapa: Map<string, number>; ubicaciones: InvUbicacion[] }> {
+export async function mapaExistencias(ctx: Ctx, materiales?: number[]): Promise<{ mapa: Map<string, number>; ubicaciones: InvUbicacion[] }> {
   const ubicaciones = await ubicacionesAlcanzables(ctx)
   const ids = ubicaciones.map((u) => u.id)
   if (!ids.length) return { mapa: new Map(), ubicaciones }

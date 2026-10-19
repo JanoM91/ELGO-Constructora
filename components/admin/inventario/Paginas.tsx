@@ -32,17 +32,18 @@ export function Inicio() {
         </Aviso>
       )}
       <div className="fz-acciones">
-        <Link className="fz-accion fz-accion--navy" href={`${base}/catalogo`}><span className="fz-accion__ico"><Icono n="buscar" /></span><span>Buscar material<small>{catalogo.totales.materiales} en el catálogo</small></span></Link>
+        {(p.documentos || p.requisiciones || p.confirmar) && <Link className="fz-accion fz-accion--navy" href={`${base}/analizar`}><span className="fz-accion__ico"><Icono n="archivo" /></span><span>Analizar documento<small>Cotización, requisición o factura: qué hay, qué comprar y cuánto cuesta</small></span></Link>}
+        <Link className={`fz-accion ${p.documentos || p.requisiciones || p.confirmar ? 'fz-accion--claro' : 'fz-accion--navy'}`} href={`${base}/catalogo`}><span className="fz-accion__ico"><Icono n="buscar" /></span><span>Buscar material<small>{catalogo.totales.materiales} en el catálogo</small></span></Link>
         {p.movimientos && <Link className="fz-accion fz-accion--teal" href={`${base}/registrar?tipo=entrada_compra`}><span className="fz-accion__ico"><Icono n="entra" /></span><span>Entrada de material<small>Llegó una compra</small></span></Link>}
         {p.movimientos && <Link className="fz-accion fz-accion--claro" href={`${base}/registrar?tipo=salida_obra`}><span className="fz-accion__ico"><Icono n="sale" /></span><span>Salida a obra<small>De bodega a una obra</small></span></Link>}
         <Link className="fz-accion fz-accion--claro" href={`${base}/existencias`}><span className="fz-accion__ico"><Icono n="obra" /></span><span>Existencias<small>Qué hay en bodega y en cada obra</small></span></Link>
       </div>
       {p.documentos && catalogo.totales.documentosPorRevisar > 0 && (
-        <Aviso tono="info">Hay {catalogo.totales.documentosPorRevisar} documento{catalogo.totales.documentosPorRevisar === 1 ? '' : 's'} por revisar. La pantalla de revisión llega en la siguiente fase.</Aviso>
+        <Aviso tono="info">Hay {catalogo.totales.documentosPorRevisar} documento{catalogo.totales.documentosPorRevisar === 1 ? '' : 's'} por revisar. </Aviso>
       )}
       <div className="fz-tarjeta fz-pad fz-stack fz-stack--chico">
         <h3>Qué hace Inventario</h3>
-        <p className="fz-ayuda">Catálogo de materiales, existencias por ubicación y movimientos (fase A). Después: subir cotizaciones y requisiciones, empatarlas con el catálogo, histórico de precios por proveedor, cuadro comparativo y pronóstico del costo de una compra.</p>
+        <p className="fz-ayuda">Catálogo de materiales con el histórico de precios por tienda, existencias por ubicación y movimientos. «Analizar documento» lee cualquier cotización o requisición, la empata con el catálogo, dice qué hay en existencia, qué falta comprar y cuánto costaría, compara contra la otra tienda y la guarda en el histórico.</p>
       </div>
     </div>
   )

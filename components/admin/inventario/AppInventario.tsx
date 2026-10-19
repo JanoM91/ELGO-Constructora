@@ -10,6 +10,7 @@ import Link from 'next/link'
 import React from 'react'
 import type { CatalogoInventario } from '../../../lib/inventario/tipos'
 import AvisoInstalar from '../finanzas/AvisoInstalar'
+import Analizar from './Analizar'
 import { Aviso, Icono, iniciales, InventarioCtx } from './comun'
 import { Catalogo, Configuracion, Existencias, Inicio, Material, Movimientos, RegistrarMovimiento } from './Paginas'
 
@@ -35,11 +36,13 @@ export default function AppInventario({ catalogo, ruta, query, rutaAdmin, soloCa
   else if (seccion === 'existencias') pantalla = <Existencias key={query.ubicacion ?? ''} ubicacionInicial={numero(query.ubicacion)} />
   else if (seccion === 'movimientos') pantalla = <Movimientos key={`${query.material ?? ''}-${query.ubicacion ?? ''}`} materialInicial={numero(query.material)} ubicacionInicial={numero(query.ubicacion)} />
   else if (seccion === 'registrar') pantalla = p.movimientos ? <RegistrarMovimiento key={`${query.tipo ?? ''}-${query.material ?? ''}`} tipoInicial={query.tipo ?? 'entrada_compra'} materialInicial={numero(query.material)} /> : <Aviso tono="info">Tu rol no incluye registrar movimientos de existencias.</Aviso>
+  else if (seccion === 'analizar') pantalla = <Analizar />
   else if (seccion === 'configuracion') pantalla = <Configuracion />
   else pantalla = <Aviso tono="aviso">Esa pantalla no existe. <Link href={base}>Volver al inicio de Inventario</Link></Aviso>
 
   const pestanas: [string, string, string, boolean][] = [
     ['', 'Inicio', 'inicio', true],
+    ['analizar', 'Analizar', 'archivo', p.documentos || p.requisiciones || p.confirmar],
     ['catalogo', 'Catálogo', 'buscar', true],
     ['existencias', 'Existencias', 'obra', true],
     ['registrar', 'Registrar', 'mas', p.movimientos],
@@ -80,7 +83,7 @@ export default function AppInventario({ catalogo, ruta, query, rutaAdmin, soloCa
         </main>
         {soloCaptura && (
           <nav className="fz-barra" aria-label="Secciones">
-            {visibles.filter(([k]) => k !== 'configuracion').map(([k, l, ic]) => (
+            {visibles.filter(([k]) => k !== 'configuracion').filter(([k], _i, xs) => xs.length <= 5 || k !== 'movimientos').map(([k, l, ic]) => (
               <Link key={k} href={k ? `${base}/${k}` : base} className={activa(k) ? 'is-on' : ''} aria-current={activa(k) ? 'page' : undefined}>
                 <Icono n={ic} />
                 <span>{l}</span>

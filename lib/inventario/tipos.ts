@@ -114,3 +114,106 @@ export type ResultadoArranqueInventario = {
   ubicaciones: number
   yaExistian: string[]
 }
+
+/* ───────────────────────────── «Analizar documento» ───────────────────────────── */
+
+export type TipoDocumentoAnalizado = 'cotizacion' | 'requisicion' | 'factura' | 'otro'
+
+/** Material tal como lo necesita la pantalla de análisis. */
+export type MaterialEnAnalisis = { id: number; clave: string | null; descripcion: string; unidadBase: UnidadBase }
+
+export type EstadoEmpateAnalisis = 'confirmado' | 'propuesto' | 'ambiguo' | 'nuevo' | 'omitido'
+
+/** Un renglón leído del documento con su empate. Los precios ya vienen SIN IVA. */
+export type RenglonAnalizado = {
+  linea: number
+  descripcion: string
+  clave: string | null
+  marca: string | null
+  cantidad: number | null
+  unidad: string | null
+  precioUnitarioCentavos: number | null
+  importeCentavos: number | null
+  estado: EstadoEmpateAnalisis
+  metodo: 'equivalencia' | 'clave_proveedor' | 'numero_parte' | 'descripcion' | 'manual' | null
+  confianza: number | null
+  material: MaterialEnAnalisis | null
+  candidatos: MaterialEnAnalisis[]
+  /** Unidades del documento por unidad base del material; null = no se sabe convertir. */
+  factor: number | null
+}
+
+/** Lo que se calcula por renglón con el material elegido. */
+export type CalculoRenglon = {
+  linea: number
+  cantidadBase: number | null
+  existencia: number
+  faltante: number | null
+  /** Precio del documento por unidad base, sin IVA. */
+  precioDocBaseCentavos: number | null
+  estimado: { precioBaseCentavos: number | null; proveedor: Ref | null; fecha: string | null; regla: string; viejo: boolean }
+  /** Último precio de cada tienda (sin IVA, por unidad base). */
+  porProveedor: { proveedor: Ref; precioBaseCentavos: number; fecha: string }[]
+  /** Contra el último precio de la MISMA tienda del documento. */
+  vsMismaTienda: { precioBaseCentavos: number; fecha: string; variacionPct: number } | null
+  /** Contra la tienda más barata distinta a la del documento. */
+  vsOtraTienda: { proveedor: Ref; precioBaseCentavos: number; fecha: string; diferenciaPct: number } | null
+  /** Costo de comprar el faltante: con el precio del documento y con el mejor conocido. */
+  costoDocCentavos: number | null
+  costoEstimadoCentavos: number | null
+  avisos: string[]
+}
+
+export type ResumenAnalisis = {
+  renglones: number
+  conMaterial: number
+  porRevisar: number
+  conExistenciaSuficiente: number
+  aComprar: number
+  costoDocCentavos: number
+  costoEstimadoCentavos: number
+  /** Cuánto se ahorraría comprando en la tienda más barata conocida los renglones donde esta cotización sale más cara. */
+  ahorroPosibleCentavos: number
+  sinPrecio: number
+  ivaPct: number
+}
+
+export type EncabezadoAnalisis = {
+  tipo: TipoDocumentoAnalizado
+  proveedorTexto: string | null
+  proveedor: Ref | null
+  folio: string | null
+  fecha: string | null
+  vigenciaHasta: string | null
+  subtotalCentavos: number | null
+  ivaCentavos: number | null
+  totalCentavos: number | null
+  preciosConIva: boolean
+  cuadra: boolean | null
+  obra: string | null
+}
+
+export type ArchivoAnalizado = { ruta: string; nombre: string; tipo: string; tamano: number } | null
+
+export type ResultadoAnalisis = {
+  encabezado: EncabezadoAnalisis
+  archivo: ArchivoAnalizado
+  archivoNombre: string
+  renglones: RenglonAnalizado[]
+  calculo: CalculoRenglon[]
+  resumen: ResumenAnalisis
+  dudas: string[]
+  /** El mismo folio de la misma tienda ya está en el histórico. */
+  yaGuardado: { id: number; version: number; fecha: string | null } | null
+}
+
+export type ResultadoGuardarAnalisis = {
+  documento: number
+  version: number
+  partidas: number
+  precios: number
+  materialesNuevos: number
+  equivalenciasNuevas: number
+  proveedorNuevo: boolean
+  alertas: { material: string; proveedor: string; antes: number; despues: number; variacionPct: number; fecha: string; folio: string }[]
+}

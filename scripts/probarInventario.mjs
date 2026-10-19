@@ -15,6 +15,7 @@ import {
   concentracion, conIva, cuadraSubtotal, existenciaDe, existenciasDesdeMovimientos, factorDeConversion, mejoresCandidatos, normalizarDescripcion,
   normalizarNumeroParte, normalizarPartida, normalizarUnidad, parecido, precioEstimado, resumenPronostico, revisarMovimiento, sinIva, variacionPct, esAlertaDePrecio, textoDeBusqueda,
 } from '../lib/inventario/reglas.ts'
+import { empatarPorAtributos, indiceDeEmpate, llaveDe } from '../lib/inventario/empate.ts'
 import { calcularPermisos, esSoloCaptura, usaFinanzas, usaInventario } from '../lib/permisosBase.ts'
 
 let fallas = 0
@@ -32,6 +33,7 @@ ok(factorDeConversion('pieza', 'pieza') === 1, 'Misma unidad: factor 1')
 ok(factorDeConversion('tramo', 'metro', { longitudTramo: 3.05 }) === 3.05, '1 tramo = 3.05 m si el material tiene longitud')
 ok(factorDeConversion('tramo', 'metro', {}) === null, 'Tramo → metro sin longitud: null (lo resuelve una persona)')
 ok(Math.abs(factorDeConversion('kilogramo', 'metro', { pesoPorMetroKg: 0.0296 }) - 1 / 0.0296) < 1e-9, 'kg → m con peso por metro')
+ok(factorDeConversion('tramo', 'pieza') === 1, 'Un tramo de tubo es una pieza')
 ok(factorDeConversion('caja', 'pieza') === null, 'Caja → pieza necesita equivalencia confirmada')
 const n = normalizarPartida(6, 110747, 3.05)
 ok(n.cantidadBase === 18.3 && n.precioBaseCentavos === 36310, '6 tramos a $1,107.47 → 18.3 m a $363.10/m')
@@ -100,6 +102,27 @@ ok(Math.abs(r.coberturaPct - 66.7) < 0.01 && r.totalCentavos === conIva(r.subtot
 const c = concentracion([{ n: 'LAL36350 ×3', importeCentavos: 12600000 }, { n: 'tableros', importeCentavos: 8000000 }, { n: 'tubo', importeCentavos: 1000000 }, { n: 'coples', importeCentavos: 500000 }])
 ok(c.top.length === 2 && c.top[0].n === 'LAL36350 ×3' && c.pctDelTotal > 90, 'Dos partidas concentran más del 80 % del importe')
 ok(cuadraSubtotal([100000, 250050, 49950], 400000) && !cuadraSubtotal([100000, 250050], 400000), 'Cuadre de subtotal con tolerancia de $1')
+
+console.log('\nEmpate por atributos (renglones sin clave)')
+const catAtr = indiceDeEmpate([
+  { id: 1, descripcion: 'CONDULET TIPO LB 3/4" CROUSE' },
+  { id: 2, descripcion: 'CONDULET TIPO LL 3/4" CROUSE' },
+  { id: 3, descripcion: 'TUBO CONDUIT GALV. PARED GRUESA 2"' },
+  { id: 4, descripcion: 'TUBO CONDUIT GALV. PARED DELGADA 2"' },
+  { id: 5, descripcion: 'INTERRUPTOR QO 2X20 SQUARE D', numeroParte: 'QO220', atributos: { polos: 2, amperes: 20 } },
+  { id: 6, descripcion: 'INTERRUPTOR QO 1X20 SQUARE D', numeroParte: 'QO120', atributos: { polos: 1, amperes: 20 } },
+  { id: 7, descripcion: 'CABLE THW CAL. 12 NEGRO' },
+  { id: 8, descripcion: 'CABLE THW CAL. 12 BLANCO' },
+  { id: 9, descripcion: 'TABLERO NQ 30 CIRCUITOS' },
+])
+ok(llaveDe('Condulet tipo LB de 3/4"').subtipo === 'LB' && llaveDe('TUBO GALV P.D. 1 1/4"').medida === '1 1/4', 'Llave: subtipo LB y medida 1 1/4')
+ok(empatarPorAtributos('CONDULET LB 3/4" (TIPO LB)', catAtr).candidatos[0]?.id === 1, 'Condulet LB 3/4" empata con el LB, no con el LL')
+ok(empatarPorAtributos('TUBO GALVANIZADO PG 2"', catAtr).estado === 'empata' && empatarPorAtributos('TUBO GALVANIZADO PG 2"', catAtr).candidatos[0].id === 3, 'Tubo galv PG 2" empata con pared gruesa')
+ok(empatarPorAtributos('TUBO GALV 2"', catAtr).estado === 'ambiguo', 'Sin pared: ambiguo (lo decide una persona)')
+ok(empatarPorAtributos('PASTILLA QO220 2 POLOS', catAtr).metodo === 'numero_parte', 'Número de parte dentro del texto gana')
+ok(empatarPorAtributos('INTERRUPTOR QO 1P 20A', catAtr).candidatos.map((c) => c.id).join() === '6', 'QO por polos × amperes')
+ok(empatarPorAtributos('CABLE THW 12 ROJO', catAtr).estado !== 'empata', 'Cable de otro color no empata')
+ok(empatarPorAtributos('TABLERO NQ 30 CIRCUITOS', catAtr).estado === 'nuevo', 'Tableros nunca se empatan por atributos')
 
 console.log('\nPermisos de Inventario')
 const pSuper = calcularPermisos({ esSuperadmin: true }, null)
