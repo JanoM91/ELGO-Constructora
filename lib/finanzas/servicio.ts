@@ -282,6 +282,34 @@ async function cargarOperacion(ctx: Ctx, id: number): Promise<FinOperacion> {
   return op
 }
 
+/**
+ * ¿Esta persona puede usar esta cuenta, caja, obra o área al registrar?
+ * El dueño (o quien tenga «Configurar») elige en cada una qué roles la usan
+ * (`usanRoles`); vacío = todos. La persona a cargo de un fondo siempre puede
+ * usarlo, y quien configura o es superadministrador las ve todas.
+ */
+function puedeUsar(ctx: Ctx, doc: { usanRoles?: unknown; responsable?: unknown }): boolean {
+  if (ctx.p.superadmin || ctx.p.fin.configurar) return true
+  const roles = (Array.isArray(doc.usanRoles) ? doc.usanRoles : []).map(idDe).filter((x): x is number => x != null)
+  if (!roles.length) return true
+  if (doc.responsable != null && idDe(doc.responsable) === ctx.user.id) return true
+  const mio = idDe((ctx.user as { rolDeAcceso?: unknown }).rolDeAcceso)
+  return mio != null && roles.includes(mio)
+}
+
+/** Carga una cuenta para registrar un cobro o pago: que exista, esté activa y la pueda usar esta persona. */
+async function cuentaParaUsar(ctx: Ctx, id: number): Promise<FinCuenta> {
+  let cuenta: FinCuenta
+  try {
+    cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id, depth: 0, overrideAccess: true })
+  } catch {
+    throw invalido('La cuenta no existe.')
+  }
+  if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
+  if (!puedeUsar(ctx, cuenta)) throw prohibido(`Tu rol no tiene asignada la cuenta «${cuenta.nombre}». Elige otra o pide al dueño que te la asigne.`)
+  return cuenta
+}
+
 /* ───────────────────────────── catálogo ───────────────────────────── */
 
 /** Cuentas para las pantallas; las de tipo «fondo» traen a quién están a cargo (docs/62). */
@@ -312,11 +340,11 @@ export async function catalogo(ctx: Ctx): Promise<Catalogo> {
     for (const id of ids) if (id != null) m.set(id, (m.get(id) ?? 0) + 1)
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id)
   }
-  const acts = actividades.docs.map((a) => ({ id: a.id, nombre: a.nombre, tipo: a.tipo === 'area' ? ('area' as const) : ('obra' as const) }))
+  const acts = actividades.docs.filter((a) => puedeUsar(ctx, a)).map((a) => ({ id: a.id, nombre: a.nombre, tipo: a.tipo === 'area' ? ('area' as const) : ('obra' as const) }))
   return {
     hoy: ctx.hoy,
     fechaCorte: corte,
-    cuentas: await vistasDeCuentas(ctx, cuentas.docs),
+    cuentas: await vistasDeCuentas(ctx, cuentas.docs.filter((c) => puedeUsar(ctx, c))),
     categorias: categorias.docs
       .filter((c) => !c.restringida || ctx.p.fin.verRestringidas)
       .map((c) => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, restringida: Boolean(c.restringida), actividadSugerida: idDe(c.actividadSugerida) })),
@@ -382,6 +410,7 @@ async function validarClasificacion(
     try {
       const a = await ctx.payload.findByID({ collection: 'fin-actividades', id: d.actividad, depth: 0, overrideAccess: true })
       if (!a.activa) throw invalido(`La actividad «${a.nombre}» está desactivada.`)
+      if (!puedeUsar(ctx, a)) throw prohibido(`Tu rol no tiene asignada «${a.nombre}». Elige otra o pide al dueño que te la asigne.`)
       actividad = a.id
     } catch (e) {
       if (e instanceof ErrorFinanzas) throw e
@@ -456,12 +485,7 @@ export async function registrar(ctx: Ctx, entrada: unknown, clave: string | null
   let cuenta: FinCuenta | null = null
   if (d.estado === 'realizado' && !propio) {
     if (!d.cuenta) throw invalido('Elige la cuenta o caja.')
-    try {
-      cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id: d.cuenta, depth: 0, overrideAccess: true })
-    } catch {
-      throw invalido('La cuenta no existe.')
-    }
-    if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
+    cuenta = await cuentaParaUsar(ctx, d.cuenta)
   }
 
   try {
@@ -553,13 +577,7 @@ export async function liquidar(ctx: Ctx, opId: number, entrada: unknown, clave: 
   if (errorFecha) throw invalido(errorFecha)
   const [vista] = await armarVistas(ctx, [op])
   if (importe > vista.pendienteCentavos) throw invalido(`El importe (${formatoMXN(importe, true)}) es mayor que lo pendiente (${formatoMXN(vista.pendienteCentavos, true)}).`)
-  let cuenta: FinCuenta
-  try {
-    cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id: d.cuenta, depth: 0, overrideAccess: true })
-  } catch {
-    throw invalido('La cuenta no existe.')
-  }
-  if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
+  const cuenta = await cuentaParaUsar(ctx, d.cuenta)
   try {
     await enTransaccion(ctx, async (req) => {
       await ctx.payload.create({
@@ -937,7 +955,8 @@ async function correosDeAviso(ctx: Ctx): Promise<string[]> {
     where = { or: o }
   }
   const u = await ctx.payload.find({ collection: 'users', where, depth: 0, pagination: false, overrideAccess: true, select: { email: true } })
-  return u.docs.filter((x) => x.id !== ctx.user.id).map((x) => x.email).filter(Boolean)
+  /* También a quien registró si le toca recibirlo (p. ej. un dueño que captura): así le queda constancia. */
+  return [...new Set(u.docs.map((x) => x.email).filter(Boolean))]
 }
 
 /** Manda el aviso de un registro con propuestas. Corre después de responder (la ruta usa `after()`); si falla, solo queda en el registro del servidor. */
@@ -1077,14 +1096,7 @@ export async function validarDatosTicket(ctx: Ctx, d: DatosTicket): Promise<FinC
   if (d.estado === 'propio' && d.tipo !== 'gasto') throw invalido('«De mi bolsa» solo aplica a gastos.')
   if (d.estado !== 'realizado') return null
   if (!d.cuenta) throw invalido(d.tipo === 'entrada' ? 'Elige a qué cuenta o caja entró.' : 'Elige de qué cuenta o caja salió.')
-  let cuenta: FinCuenta
-  try {
-    cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id: d.cuenta, depth: 0, overrideAccess: true })
-  } catch {
-    throw invalido('La cuenta no existe.')
-  }
-  if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
-  return cuenta
+  return cuentaParaUsar(ctx, d.cuenta)
 }
 
 /** ¿Ya se guardó este ticket (mismo reintento)? */
@@ -1209,12 +1221,7 @@ export async function registrarPlan(ctx: Ctx, entrada: unknown, clave: string | 
   let cuenta: FinCuenta | null = null
   if (hechas.length) {
     if (!d.cuenta) throw invalido(d.tipo === 'entrada' ? 'Elige a qué cuenta o caja entró lo que ya se cobró.' : 'Elige de qué cuenta o caja salió lo que ya se pagó.')
-    try {
-      cuenta = await ctx.payload.findByID({ collection: 'fin-cuentas', id: d.cuenta, depth: 0, overrideAccess: true })
-    } catch {
-      throw invalido('La cuenta no existe.')
-    }
-    if (!cuenta.activa) throw invalido(`La cuenta «${cuenta.nombre}» está desactivada.`)
+    cuenta = await cuentaParaUsar(ctx, d.cuenta)
   }
   const prop = await resolverPropuestas(ctx, d.tipo, d)
   const clas = await validarClasificacion(ctx, d.tipo, { categoria: prop.categoriaId, asignacion: prop.asignacion, actividad: prop.actividadId })

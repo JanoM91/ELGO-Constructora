@@ -71,6 +71,17 @@ export const FinCuentas: CollectionConfig = {
       ],
     },
     { name: 'responsable', label: 'A cargo de', type: 'relationship', relationTo: 'users', admin: { description: 'Solo para cajas o fondos que maneja una persona.' } },
+    {
+      name: 'usanRoles',
+      label: 'Roles que pueden usarla al registrar',
+      type: 'relationship',
+      relationTo: 'roles',
+      hasMany: true,
+      admin: {
+        description:
+          'Vacío = todos los roles. Si eliges roles (por ejemplo «Empleados»), solo ellos —y la persona a cargo— la ven al registrar cobros y pagos. Los roles con «Configurar» y el superadministrador siempre la ven.',
+      },
+    },
     { name: 'activa', label: 'Activa', type: 'checkbox', defaultValue: true },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
@@ -131,6 +142,17 @@ export const FinActividades: CollectionConfig = {
       admin: { condition: (d) => d?.tipo !== 'area', description: 'Opcional. Sirve para ver cuánto del contrato ya se cobró en «Obras».' },
     },
     { name: 'activa', label: 'Activa', type: 'checkbox', defaultValue: true, admin: { description: 'Desmárcala al terminar la obra: ya no aparece al registrar, pero sus números siguen en «Obras».' } },
+    {
+      name: 'usanRoles',
+      label: 'Roles que pueden asignarle movimientos',
+      type: 'relationship',
+      relationTo: 'roles',
+      hasMany: true,
+      admin: {
+        description:
+          'Vacío = todos los roles. Si eliges roles (por ejemplo «Empleados»), solo ellos la ven al registrar. Los roles con «Configurar» y el superadministrador siempre la ven.',
+      },
+    },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
 }

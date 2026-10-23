@@ -288,6 +288,10 @@ export interface FinActividad {
    * Desmárcala al terminar la obra: ya no aparece al registrar, pero sus números siguen en «Obras».
    */
   activa?: boolean | null;
+  /**
+   * Vacío = todos los roles. Si eliges roles (por ejemplo «Empleados»), solo ellos la ven al registrar. Los roles con «Configurar» y el superadministrador siempre la ven.
+   */
+  usanRoles?: (number | Rol)[] | null;
   notas?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -317,6 +321,10 @@ export interface FinCuenta {
    * Solo para cajas o fondos que maneja una persona.
    */
   responsable?: (number | null) | User;
+  /**
+   * Vacío = todos los roles. Si eliges roles (por ejemplo «Empleados»), solo ellos —y la persona a cargo— la ven al registrar cobros y pagos. Los roles con «Configurar» y el superadministrador siempre la ven.
+   */
+  usanRoles?: (number | Rol)[] | null;
   activa?: boolean | null;
   notas?: string | null;
   updatedAt: string;
@@ -1016,6 +1024,7 @@ export interface FinCuentasSelect<T extends boolean = true> {
   saldoInicial?: T;
   fechaInicio?: T;
   responsable?: T;
+  usanRoles?: T;
   activa?: T;
   notas?: T;
   updatedAt?: T;
@@ -1046,6 +1055,7 @@ export interface FinActividadesSelect<T extends boolean = true> {
   sector?: T;
   importeContratado?: T;
   activa?: T;
+  usanRoles?: T;
   notas?: T;
   updatedAt?: T;
   createdAt?: T;
