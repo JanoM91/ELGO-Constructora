@@ -543,3 +543,113 @@ export function estadoCalendario(cuotas: { fecha: string | null; centavos: numbe
   })
   return { cuotas: filas, proxima: proxima as { fecha: string | null; faltaCentavos: number; numero: number } | null, vencidas: filas.filter((f) => f.estado === 'vencida').length }
 }
+
+/* ───────────────────────────── cuadre con el banco (24-nov-2026) ───────────────────────────── */
+
+/** Un movimiento de UNA cuenta para el cuadre. `traspaso`: modalidad traspaso (entre cuentas propias o fondos). */
+export type MovimientoCuadre = { fecha: string; direccion: 'entra' | 'sale'; centavos: number; traspaso: boolean }
+
+export type EstadoCuadre = 'cuadra' | 'diferencia' | 'sin_banco' | 'en_curso'
+
+export type MesCuadreBase = {
+  /** AAAA-MM */
+  mes: string
+  /** Días que cubre: del inicio de la cuenta (o día 1) al último día del mes (o hoy). */
+  desde: string
+  hasta: string
+  enCurso: boolean
+  saldoInicioCentavos: number
+  /** Entradas y aportaciones (lo que entra sin ser traspaso). */
+  entradasCentavos: number
+  /** Gastos y retiros (lo que sale sin ser traspaso). */
+  gastosCentavos: number
+  traspasosEntraCentavos: number
+  traspasosSaleCentavos: number
+  saldoCierreCentavos: number
+  movimientos: number
+  bancoCentavos: number | null
+  /** App − banco. Positivo: la app tiene más dinero que el banco. */
+  diferenciaCentavos: number | null
+  estado: EstadoCuadre
+}
+
+export const esMes = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s)
+
+/** Último día de un mes «AAAA-MM» → «AAAA-MM-DD». */
+export function finDeMes(mes: string): string {
+  const [y, m] = mes.split('-').map(Number)
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+}
+
+/** Meses de `desde` a `hasta` (ambos «AAAA-MM», inclusive), del más antiguo al más reciente. */
+export function mesesEntre(desde: string, hasta: string): string[] {
+  const out: string[] = []
+  let [y, m] = desde.split('-').map(Number)
+  const [yh, mh] = hasta.split('-').map(Number)
+  while ((y < yh || (y === yh && m <= mh)) && out.length < 600) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`)
+    m += 1
+    if (m > 12) { m = 1; y += 1 }
+  }
+  return out
+}
+
+/**
+ * El cuadre mes por mes de una cuenta, como el estado de cuenta del banco:
+ * saldo al iniciar + entradas − salidas = saldo al cerrar, y la comparación
+ * con el saldo final que dice el banco (si ya se capturó).
+ *
+ * `inicio` es la fecha de inicio de la cuenta (la del saldo inicial). Lo que
+ * tenga fecha anterior no debería existir; si existe, entra en el saldo del
+ * primer mes (igual que en «Saldos») y se reporta en `antes` para revisarlo.
+ * Los meses van del más antiguo al más reciente; el actual queda «en curso».
+ */
+export function cuadrePorMes(args: { saldoInicialCentavos: number; inicio: string; hoy: string; movimientos: MovimientoCuadre[]; bancos: Record<string, number> }): { meses: MesCuadreBase[]; antes: { movimientos: number; netoCentavos: number } } {
+  const { saldoInicialCentavos, inicio, hoy, movimientos, bancos } = args
+  const neto = (m: MovimientoCuadre) => (m.direccion === 'entra' ? m.centavos : -m.centavos)
+  const previos = movimientos.filter((m) => m.fecha < inicio)
+  const antes = { movimientos: previos.length, netoCentavos: previos.reduce((a, m) => a + neto(m), 0) }
+  const mesHoy = hoy.slice(0, 7)
+  const ultimoMov = movimientos.reduce((a, m) => (m.fecha > a ? m.fecha : a), '')
+  const hastaMes = (ultimoMov.slice(0, 7) > mesHoy ? ultimoMov.slice(0, 7) : mesHoy)
+  if (inicio.slice(0, 7) > hastaMes) return { meses: [], antes }
+  let saldo = saldoInicialCentavos + antes.netoCentavos
+  const meses = mesesEntre(inicio.slice(0, 7), hastaMes).map((mes): MesCuadreBase => {
+    const delMes = movimientos.filter((m) => m.fecha >= inicio && m.fecha.slice(0, 7) === mes)
+    const suma = (f: (m: MovimientoCuadre) => boolean) => delMes.filter(f).reduce((a, m) => a + m.centavos, 0)
+    const entradas = suma((m) => m.direccion === 'entra' && !m.traspaso)
+    const gastos = suma((m) => m.direccion === 'sale' && !m.traspaso)
+    const tEntra = suma((m) => m.direccion === 'entra' && m.traspaso)
+    const tSale = suma((m) => m.direccion === 'sale' && m.traspaso)
+    const inicioMes = saldo
+    saldo = inicioMes + entradas + tEntra - gastos - tSale
+    const enCurso = mes >= mesHoy
+    const banco = Object.prototype.hasOwnProperty.call(bancos, mes) && Number.isFinite(bancos[mes]) ? bancos[mes] : null
+    const diferencia = banco == null ? null : saldo - banco
+    const estado: EstadoCuadre = banco != null ? (diferencia === 0 ? 'cuadra' : 'diferencia') : enCurso ? 'en_curso' : 'sin_banco'
+    const desde = mes === inicio.slice(0, 7) ? inicio : `${mes}-01`
+    const fin = finDeMes(mes)
+    return {
+      mes, desde, hasta: enCurso && hoy < fin ? hoy : fin, enCurso,
+      saldoInicioCentavos: inicioMes, entradasCentavos: entradas, gastosCentavos: gastos,
+      traspasosEntraCentavos: tEntra, traspasosSaleCentavos: tSale, saldoCierreCentavos: saldo,
+      movimientos: delMes.length, bancoCentavos: banco, diferenciaCentavos: diferencia, estado,
+    }
+  })
+  return { meses, antes }
+}
+
+/**
+ * Qué buscar cuando un mes no cuadra (la pantalla lo dice en palabras).
+ * Si la misma diferencia se repite desde el primer mes capturado, casi
+ * siempre es el saldo inicial.
+ */
+export function pistaDiferencia(meses: MesCuadreBase[], mes: string): 'saldo_inicial' | 'falta_salida' | 'falta_entrada' | null {
+  const i = meses.findIndex((m) => m.mes === mes)
+  const m = meses[i]
+  if (!m || m.diferenciaCentavos == null || m.diferenciaCentavos === 0) return null
+  const conBanco = meses.filter((x) => x.diferenciaCentavos != null)
+  const primero = conBanco[0]
+  if (primero && primero.mes <= mes && conBanco.filter((x) => x.mes <= mes).length >= 2 && conBanco.filter((x) => x.mes <= mes).every((x) => x.diferenciaCentavos === m.diferenciaCentavos)) return 'saldo_inicial'
+  return m.diferenciaCentavos > 0 ? 'falta_salida' : 'falta_entrada'
+}

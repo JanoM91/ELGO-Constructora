@@ -4,6 +4,7 @@ import * as migration_20261014_193722_propuestas_tickets_plazos from './20261014
 import * as migration_20261019_151532_inventario_base from './20261019_151532_inventario_base';
 import * as migration_20261019_180537_unidades_paquete_cubeta from './20261019_180537_unidades_paquete_cubeta';
 import * as migration_20261023_225116_roles_usan_cuentas_obras from './20261023_225116_roles_usan_cuentas_obras';
+import * as migration_20261125_185035_cuadres_con_banco from './20261125_185035_cuadres_con_banco';
 
 export const migrations = [
   {
@@ -34,6 +35,11 @@ export const migrations = [
   {
     up: migration_20261023_225116_roles_usan_cuentas_obras.up,
     down: migration_20261023_225116_roles_usan_cuentas_obras.down,
-    name: '20261023_225116_roles_usan_cuentas_obras'
+    name: '20261023_225116_roles_usan_cuentas_obras',
+  },
+  {
+    up: migration_20261125_185035_cuadres_con_banco.up,
+    down: migration_20261125_185035_cuadres_con_banco.down,
+    name: '20261125_185035_cuadres_con_banco',
   },
 ];

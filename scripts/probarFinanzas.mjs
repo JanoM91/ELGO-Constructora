@@ -13,6 +13,7 @@
  */
 import {
   aCentavos, aPesos, armarBorradorVoz, conceptoInterno, diasEntre, esFechaValida, estadoDePago, formatoMXN, resumenDeFondo, revisarFechaReal, saldoDeCuenta, sumarDias, tieneDosDecimalesOMenos, armarPlan, armarTicket, coincidenciaDeNombre, estadoCalendario, repartirProporcional, revisarPlan, normalizarNombre, textoPropuesta,
+  cuadrePorMes, esMes, finDeMes, mesesEntre, pistaDiferencia,
 } from '../lib/finanzas/reglas.ts'
 import { calcularPermisos, esSoloCaptura, usaFinanzas } from '../lib/permisosBase.ts'
 
@@ -139,6 +140,33 @@ ok(revisarPlan(1000, [{ fecha: '2026-10-13', centavos: 1000, yaOcurrio: true, no
 const ec = estadoCalendario([{ fecha: '2026-10-13', centavos: 15000000 }, { fecha: '2026-10-28', centavos: 5000000 }, { fecha: '2026-11-12', centavos: 5000000 }, { fecha: null, centavos: 5000000 }], 19000000, '2026-11-01')
 ok(ec.cuotas[0].estado === 'cubierta' && ec.cuotas[1].estado === 'vencida' && ec.cuotas[1].faltaCentavos === 1000000 && ec.vencidas === 1, 'Pagó 40 mil de un pago de 50: vencido con 10 mil por pagar')
 ok(ec.proxima?.fecha === '2026-10-28' && ec.cuotas[2].estado === 'futura' && ec.cuotas[3].estado === 'sin_fecha', 'El próximo es el vencido; lo sin fecha va al final')
+
+console.log('\nCuadre con el banco')
+ok(finDeMes('2026-02') === '2026-02-28' && finDeMes('2028-02') === '2028-02-29' && finDeMes('2026-12') === '2026-12-31', 'Último día del mes (con bisiestos)')
+ok(mesesEntre('2026-11', '2027-02').join(',') === '2026-11,2026-12,2027-01,2027-02', 'Meses entre dos fechas, cruzando de año')
+ok(esMes('2026-09') && !esMes('2026-13') && !esMes('2026-9'), 'Valida meses AAAA-MM')
+const movsC = [
+  { fecha: '2026-09-03', direccion: 'entra', centavos: 394073780, traspaso: false },
+  { fecha: '2026-09-10', direccion: 'sale', centavos: 300087080, traspaso: false },
+  { fecha: '2026-10-05', direccion: 'sale', centavos: 5000000, traspaso: true },
+  { fecha: '2026-10-20', direccion: 'sale', centavos: 54225073, traspaso: false },
+  { fecha: '2026-11-03', direccion: 'sale', centavos: 18103422, traspaso: false },
+]
+const cq = cuadrePorMes({ saldoInicialCentavos: 50000000, inicio: '2026-09-01', hoy: '2026-11-24', movimientos: movsC, bancos: { '2026-09': 143986700, '2026-10': 84761627 } })
+ok(cq.meses.length === 3 && cq.meses[0].mes === '2026-09' && cq.meses[2].enCurso && cq.meses[2].hasta === '2026-11-24', 'Tres meses desde el inicio; noviembre en curso hasta hoy')
+ok(cq.meses[0].saldoInicioCentavos === 50000000 && cq.meses[0].saldoCierreCentavos === 143986700 && cq.meses[0].estado === 'cuadra', 'Septiembre: inicial + entradas − gastos = banco → cuadra')
+ok(cq.meses[1].saldoInicioCentavos === 143986700 && cq.meses[1].traspasosSaleCentavos === 5000000 && cq.meses[1].gastosCentavos === 54225073, 'Octubre arranca con el cierre de septiembre; traspasos aparte de gastos')
+ok(cq.meses[1].saldoCierreCentavos === 84761627 && cq.meses[1].estado === 'cuadra', 'Los traspasos sí mueven el saldo de la cuenta')
+ok(cq.meses[2].estado === 'en_curso' && cq.meses[2].bancoCentavos === null && cq.meses[2].saldoCierreCentavos === 66658205, 'Mes en curso sin saldo del banco')
+const cq2 = cuadrePorMes({ saldoInicialCentavos: 15000000, inicio: '2026-09-01', hoy: '2026-11-24', movimientos: movsC, bancos: { '2026-09': 143986700, '2026-10': 84761627 } })
+ok(cq2.meses[0].diferenciaCentavos === -35000000 && cq2.meses[1].diferenciaCentavos === -35000000, 'Saldo inicial mal: la misma diferencia en todos los meses')
+ok(pistaDiferencia(cq2.meses, '2026-10') === 'saldo_inicial', 'La pista apunta al saldo inicial cuando la diferencia se repite')
+const cq3 = cuadrePorMes({ saldoInicialCentavos: 50000000, inicio: '2026-09-01', hoy: '2026-11-24', movimientos: movsC, bancos: { '2026-09': 143986700, '2026-10': 84611627 } })
+ok(cq3.meses[1].diferenciaCentavos === 150000 && pistaDiferencia(cq3.meses, '2026-10') === 'falta_salida', 'La app con $1,500 más que el banco: falta capturar una salida')
+const cq4 = cuadrePorMes({ saldoInicialCentavos: 0, inicio: '2026-10-01', hoy: '2026-11-24', movimientos: movsC, bancos: {} })
+ok(cq4.antes.movimientos === 2 && cq4.antes.netoCentavos === 93986700 && cq4.meses[0].mes === '2026-10' && cq4.meses[0].saldoInicioCentavos === 93986700, 'Movimientos antes del inicio: se reportan y entran al primer mes (igual que Saldos)')
+ok(cq4.meses[0].estado === 'sin_banco' && cq4.meses.length === 2, 'Mes cerrado sin saldo del banco')
+ok(cuadrePorMes({ saldoInicialCentavos: 100, inicio: '2026-11-15', hoy: '2026-11-24', movimientos: [], bancos: {} }).meses[0].desde === '2026-11-15', 'El primer mes empieza el día de inicio de la cuenta')
 
 console.log(`\n${total - fallas}/${total} pruebas pasan`)
 process.exit(fallas ? 1 : 0)

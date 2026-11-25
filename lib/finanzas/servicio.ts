@@ -32,7 +32,7 @@ import { commitTransaction, createLocalReq, initTransaction, killTransaction } f
 import { get as blobGet, put as blobPut } from '@vercel/blob'
 import { z } from 'zod'
 
-import type { FinCategoria, FinComprobante, FinCuenta, FinMovimiento, FinOperacion, User } from '../../payload-types'
+import type { FinCategoria, FinComprobante, FinCuadre, FinCuenta, FinMovimiento, FinOperacion, User } from '../../payload-types'
 import { notifyFinanzasRevision } from '../notify'
 import { permisosDe, type Permisos } from '../permisos'
 import { site } from '../site'
@@ -41,11 +41,14 @@ import {
   aPesos,
   coincidenciaDeNombre,
   conceptoInterno,
+  cuadrePorMes,
   diaEnZona,
   esFechaValida,
+  esMes,
   estadoCalendario,
   estadoDePago,
   formatoMXN,
+  pistaDiferencia,
   resumenDeFondo,
   revisarFechaReal,
   revisarPlan,
@@ -58,10 +61,14 @@ import type {
   BitacoraVista,
   Catalogo,
   ComprobanteVista,
+  Cuadre,
+  CuentaCuadre,
   CuentaVista,
+  DetalleCuadre,
   DetalleOperacion,
   Fondos,
   ListaOperaciones,
+  MesCuadre,
   MovimientoVista,
   OperacionVista,
   Pendientes,
@@ -69,6 +76,7 @@ import type {
   PersonaBreve,
   PersonaConSesiones,
   ResultadoObras,
+  RenglonCuadre,
   ResultadoTicket,
   FilaObra,
   Resumen,
@@ -1693,4 +1701,202 @@ export async function cerrarSesiones(ctx: Ctx, usuarioId: number): Promise<{ cer
   await ctx.payload.db.updateOne({ id: usuarioId, collection: 'users', data: { ...u, sessions: [], updatedAt: null }, returning: false })
   ctx.payload.logger.info(`[finanzas] ${ctx.user.email} cerró ${cerradas} sesión(es) de ${u.email}`)
   return { cerradas }
+}
+
+/* ───────────────────────────── cuadre con el banco (24-nov-2026) ───────────────────────────── */
+
+/**
+ * «Cuadre»: el estado de cuenta de la app, mes por mes y por cuenta, para
+ * compararlo con el del banco. Saldo al iniciar + entradas − salidas = saldo
+ * al cerrar (por la fecha de cada movimiento, con traspasos incluidos); quien
+ * puede captura el saldo final que dice el banco y la app marca si cuadra.
+ *
+ * Lo ven los roles con «Ver saldos». El saldo del banco lo capturan quienes
+ * además corrigen o configuran. El punto de partida (saldo inicial y su fecha)
+ * lo cambia quien configura, igual que en el panel.
+ */
+const puedeGuardarCuadre = (ctx: Ctx) => ctx.p.superadmin || (ctx.p.fin.verSaldos && (ctx.p.fin.configurar || ctx.p.fin.corregir))
+const puedeCambiarInicio = (ctx: Ctx) => ctx.p.superadmin || ctx.p.fin.configurar
+
+type MovCuadre = Pick<FinMovimiento, 'id' | 'operacion' | 'cuenta' | 'direccion' | 'importe' | 'fechaReal' | 'modalidad'>
+type BaseCuadre = {
+  lista: CuentaCuadre[]
+  cuenta: CuentaCuadre | null
+  corte: string | null
+  inicio: string | null
+  saldoInicialCentavos: number
+  todos: MovCuadre[]
+  movs: MovCuadre[]
+  meses: MesCuadre[]
+  antes: { movimientos: number; netoCentavos: number }
+}
+
+async function armarCuadre(ctx: Ctx, cuentaId: number | null): Promise<BaseCuadre> {
+  if (!(ctx.p.superadmin || ctx.p.fin.verSaldos)) throw prohibido('El cuadre con el banco solo lo ven los roles con «Ver saldos de cuentas y cajas».')
+  const [cuentas, todos, corte] = await Promise.all([
+    ctx.payload.find({ collection: 'fin-cuentas', depth: 0, pagination: false, overrideAccess: true, sort: 'nombre' }),
+    ctx.payload.find({ collection: 'fin-movimientos', where: { anulado: { not_equals: true } }, depth: 0, pagination: false, overrideAccess: true, sort: 'fechaReal', select: { operacion: true, cuenta: true, direccion: true, importe: true, fechaReal: true, modalidad: true } }),
+    fechaCorte(ctx),
+  ])
+  const vistas = await vistasDeCuentas(ctx, cuentas.docs)
+  const conMovimientos = new Set(todos.docs.map((m) => idDe(m.cuenta)))
+  const lista: CuentaCuadre[] = cuentas.docs
+    .map((c, i) => ({
+      ...vistas[i],
+      saldoCentavos: saldoDeCuenta(aCentavos(c.saldoInicial ?? 0), todos.docs.filter((m) => idDe(m.cuenta) === c.id).map((m) => ({ direccion: m.direccion, centavos: aCentavos(m.importe) }))),
+      fechaInicio: esFechaValida(c.fechaInicio) ? (c.fechaInicio as string) : null,
+    }))
+    .filter((c) => c.activa || conMovimientos.has(c.id))
+  const cuenta = cuentaId != null
+    ? lista.find((c) => c.id === cuentaId) ?? null
+    : lista.find((c) => c.activa && c.tipo === 'banco') ?? lista.find((c) => c.activa) ?? lista[0] ?? null
+  if (cuentaId != null && !cuenta) throw noEncontrado('Esa cuenta no existe o está desactivada sin movimientos.')
+  const vacio: BaseCuadre = { lista, cuenta, corte, inicio: null, saldoInicialCentavos: 0, todos: todos.docs, movs: [], meses: [], antes: { movimientos: 0, netoCentavos: 0 } }
+  if (!cuenta) return vacio
+  const doc = cuentas.docs.find((c) => c.id === cuenta.id) as FinCuenta
+  const movs = todos.docs.filter((m) => idDe(m.cuenta) === cuenta.id)
+  const inicio = cuenta.fechaInicio ?? corte ?? movs[0]?.fechaReal ?? ctx.hoy
+  const registros = await ctx.payload.find({ collection: 'fin-cuadres', where: { cuenta: { equals: cuenta.id } }, depth: 1, pagination: false, overrideAccess: true, sort: '-createdAt', populate: { users: { name: true, email: true } } })
+  /* Manda el registro más reciente de cada mes. */
+  const ultimo = new Map<string, FinCuadre>()
+  for (const r of registros.docs) if (!ultimo.has(r.mes)) ultimo.set(r.mes, r)
+  const bancos: Record<string, number> = {}
+  for (const [mes, r] of ultimo) bancos[mes] = aCentavos(r.saldoBanco)
+  const saldoInicialCentavos = aCentavos(doc.saldoInicial ?? 0)
+  const { meses, antes } = cuadrePorMes({
+    saldoInicialCentavos, inicio, hoy: ctx.hoy, bancos,
+    movimientos: movs.map((m) => ({ fecha: m.fechaReal, direccion: m.direccion, centavos: aCentavos(m.importe), traspaso: m.modalidad === 'traspaso' })),
+  })
+  const vista: MesCuadre[] = meses.map((m) => {
+    const r = ultimo.get(m.mes)
+    return { ...m, pista: pistaDiferencia(meses, m.mes), banco: r && m.bancoCentavos != null ? { notas: r.notas || '', registradoPor: nombreUsuario(r.registradoPor), registradoEn: r.createdAt } : null }
+  })
+  return { ...vacio, inicio, saldoInicialCentavos, movs, meses: vista, antes }
+}
+
+export async function cuadre(ctx: Ctx, f: { cuenta: number | null }): Promise<Cuadre> {
+  const b = await armarCuadre(ctx, f.cuenta)
+  return {
+    hoy: ctx.hoy, fechaCorte: b.corte, cuentas: b.lista, cuenta: b.cuenta, saldoInicialCentavos: b.saldoInicialCentavos, inicio: b.inicio,
+    antes: b.antes, meses: [...b.meses].reverse(), puedeGuardar: puedeGuardarCuadre(ctx), puedeCambiarInicio: puedeCambiarInicio(ctx),
+  }
+}
+
+/** El «estado de cuenta» de un mes: cada movimiento de la cuenta en orden, con el saldo que va quedando. */
+export async function cuadreDelMes(ctx: Ctx, f: { cuenta: number; mes: string }): Promise<DetalleCuadre> {
+  if (!esMes(f.mes)) throw invalido('El mes no es válido (AAAA-MM).')
+  const b = await armarCuadre(ctx, f.cuenta)
+  const mes = b.meses.find((m) => m.mes === f.mes)
+  if (!b.cuenta || !mes || !b.inicio) throw noEncontrado('Ese mes no está en el cuadre de esta cuenta.')
+  const inicio = b.inicio
+  const delMes = b.movs.filter((m) => m.fechaReal >= inicio && m.fechaReal.slice(0, 7) === f.mes).sort((x, y) => x.fechaReal.localeCompare(y.fechaReal) || x.id - y.id)
+  const idsOp = [...new Set(delMes.map((m) => idDe(m.operacion)).filter((x): x is number => x != null))]
+  const ops = idsOp.length
+    ? (await ctx.payload.find({ collection: 'fin-operaciones', where: { id: { in: idsOp } }, depth: 1, pagination: false, overrideAccess: true, populate: POPULAR })).docs
+    : []
+  const nombres = new Map(b.lista.map((c) => [c.id, c.nombre]))
+  const veRestringidas = ctx.p.superadmin || ctx.p.fin.verRestringidas
+  let saldo = mes.saldoInicioCentavos
+  const renglones: RenglonCuadre[] = delMes.map((m) => {
+    const op = ops.find((o) => o.id === idDe(m.operacion))
+    const centavos = aCentavos(m.importe)
+    saldo += m.direccion === 'entra' ? centavos : -centavos
+    const cat = op && typeof op.categoria === 'object' && op.categoria ? op.categoria : null
+    const act = op && typeof op.actividad === 'object' && op.actividad ? op.actividad : null
+    const restringido = Boolean(cat?.restringida) && !veRestringidas
+    let detalle = ''
+    if (op?.tipo === 'traspaso') {
+      const otra = b.todos.find((x) => idDe(x.operacion) === op.id && idDe(x.cuenta) !== b.cuenta!.id)
+      const nombre = otra ? nombres.get(idDe(otra.cuenta) ?? 0) ?? 'otra cuenta' : 'otra cuenta'
+      detalle = m.direccion === 'sale' ? `Traspaso a ${nombre}` : `Traspaso de ${nombre}`
+    } else if (op) {
+      detalle = [op.tipo === 'aportacion' ? 'Aportación de socio' : op.tipo === 'retiro' ? 'Retiro de socio' : cat?.nombre, act?.nombre, op.contraparte].filter(Boolean).join(' · ')
+    }
+    return {
+      id: m.id, fecha: m.fechaReal, operacionId: op?.id ?? 0,
+      folio: restringido ? '' : op?.folio || (op ? `FIN-${op.id}` : ''),
+      concepto: restringido ? 'Movimiento de una categoría restringida' : op?.concepto ?? 'Movimiento',
+      detalle: restringido ? '' : detalle,
+      tipo: op?.tipo ?? '', direccion: m.direccion, centavos, saldoCentavos: saldo, restringido,
+    }
+  })
+  return { cuenta: b.cuenta, mes, renglones }
+}
+
+const EsquemaCuadre = z.object({
+  cuenta: idEntrada,
+  mes: z.string(),
+  saldoBanco: importeEntrada,
+  notas: z.string().max(300).nullish(),
+})
+
+/** Guarda el saldo final que dice el estado de cuenta para un mes cerrado. Nunca sobrescribe: agrega un registro y manda el último. */
+export async function guardarCuadre(ctx: Ctx, entrada: unknown, clave: string | null): Promise<{ ok: true; duplicado: boolean }> {
+  if (!puedeGuardarCuadre(ctx)) throw prohibido('Tu rol no captura el saldo del banco. Pídeselo a quien corrige o configura Finanzas.')
+  const d = EsquemaCuadre.safeParse(entrada)
+  if (!d.success) throw invalido('Revisa la cuenta, el mes y el saldo del banco.')
+  const { cuenta: cuentaId, mes } = d.data
+  if (!esMes(mes)) throw invalido('El mes no es válido.')
+  if (mes >= ctx.hoy.slice(0, 7)) throw invalido('El saldo del banco se captura cuando el mes ya cerró. Para hoy, compáralo sin guardarlo.')
+  const centavos = aCentavos(d.data.saldoBanco)
+  if (!Number.isFinite(centavos)) throw invalido('Escribe el saldo del banco con hasta dos decimales.')
+  const b = await armarCuadre(ctx, cuentaId)
+  if (!b.meses.some((m) => m.mes === mes)) throw invalido('Ese mes es anterior al inicio de la cuenta.')
+  if (clave) {
+    const ya = await ctx.payload.find({ collection: 'fin-cuadres', where: { claveIdempotencia: { equals: clave } }, depth: 0, limit: 1, overrideAccess: true })
+    if (ya.docs.length) return { ok: true, duplicado: true }
+  }
+  try {
+    await ctx.payload.create({
+      collection: 'fin-cuadres', overrideAccess: true,
+      data: { cuenta: cuentaId, mes, saldoBanco: aPesos(centavos), notas: textoCorto(d.data.notas, 300) || null, registradoPor: ctx.user.id, claveIdempotencia: clave },
+    })
+  } catch (e) {
+    if (clave && esDuplicado(e)) return { ok: true, duplicado: true }
+    throw e
+  }
+  return { ok: true, duplicado: false }
+}
+
+const EsquemaInicio = z.object({
+  cuenta: idEntrada,
+  saldoInicial: importeEntrada,
+  fechaInicio: z.string(),
+  usarComoCorte: z.boolean().optional(),
+})
+
+/**
+ * El punto de partida de una cuenta: cuánto tenía y en qué fecha (lo mismo que
+ * se edita en el panel, sin salir de Finanzas). Opcionalmente, esa fecha se
+ * vuelve la fecha de corte de todo Finanzas.
+ */
+export async function cambiarInicio(ctx: Ctx, entrada: unknown): Promise<{ ok: true; hecho: string[] }> {
+  if (!puedeCambiarInicio(ctx)) throw prohibido('El saldo inicial lo cambian los roles con «Configurar».')
+  const d = EsquemaInicio.safeParse(entrada)
+  if (!d.success) throw invalido('Revisa el saldo inicial y la fecha.')
+  const { cuenta: cuentaId, fechaInicio, usarComoCorte } = d.data
+  if (!esFechaValida(fechaInicio)) throw invalido('Escribe una fecha válida.')
+  if (fechaInicio > ctx.hoy) throw invalido('La fecha del saldo inicial no puede ser futura.')
+  const centavos = aCentavos(d.data.saldoInicial)
+  if (!Number.isFinite(centavos)) throw invalido('Escribe el saldo inicial con hasta dos decimales.')
+  let doc: FinCuenta
+  try {
+    doc = await ctx.payload.findByID({ collection: 'fin-cuentas', id: cuentaId, depth: 0, overrideAccess: true })
+  } catch {
+    throw noEncontrado('Esa cuenta no existe.')
+  }
+  if (usarComoCorte) {
+    const previos = await ctx.payload.count({ collection: 'fin-movimientos', where: { and: [{ anulado: { not_equals: true } }, { fechaReal: { less_than: fechaInicio } }] }, overrideAccess: true })
+    if (previos.totalDocs) throw invalido(`Hay ${previos.totalDocs} movimiento${previos.totalDocs === 1 ? '' : 's'} con fecha anterior al ${fechaInicio}. Revísalos antes de mover la fecha de corte.`)
+  }
+  const hecho: string[] = []
+  await enTransaccion(ctx, async (req) => {
+    await ctx.payload.update({ collection: 'fin-cuentas', id: doc.id, req, overrideAccess: true, data: { saldoInicial: aPesos(centavos), fechaInicio } })
+    hecho.push(`${doc.nombre}: saldo inicial ${formatoMXN(centavos, true)} al ${fechaInicio}`)
+    if (usarComoCorte) {
+      await ctx.payload.updateGlobal({ slug: 'fin-configuracion', req, overrideAccess: true, data: { fechaCorte: fechaInicio } })
+      hecho.push(`fecha de corte ${fechaInicio}`)
+    }
+  })
+  return { ok: true, hecho }
 }

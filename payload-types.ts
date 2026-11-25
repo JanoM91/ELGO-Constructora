@@ -76,6 +76,7 @@ export interface Config {
     'fin-movimientos': FinMovimiento;
     'fin-comprobantes': FinComprobante;
     'fin-bitacora': FinBitacora;
+    'fin-cuadres': FinCuadre;
     'inv-proveedores': InvProveedor;
     'inv-familias': InvFamilia;
     'inv-materiales': InvMaterial;
@@ -102,6 +103,7 @@ export interface Config {
     'fin-movimientos': FinMovimientosSelect<false> | FinMovimientosSelect<true>;
     'fin-comprobantes': FinComprobantesSelect<false> | FinComprobantesSelect<true>;
     'fin-bitacora': FinBitacoraSelect<false> | FinBitacoraSelect<true>;
+    'fin-cuadres': FinCuadresSelect<false> | FinCuadresSelect<true>;
     'inv-proveedores': InvProveedoresSelect<false> | InvProveedoresSelect<true>;
     'inv-familias': InvFamiliasSelect<false> | InvFamiliasSelect<true>;
     'inv-materiales': InvMaterialesSelect<false> | InvMaterialesSelect<true>;
@@ -444,6 +446,21 @@ export interface FinBitacora {
   valorNuevo?: string | null;
   motivo?: string | null;
   usuario: number | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "fin-cuadres".
+ */
+export interface FinCuadre {
+  id: number;
+  cuenta: number | FinCuenta;
+  mes: string;
+  saldoBanco: number;
+  notas?: string | null;
+  registradoPor: number | User;
+  claveIdempotencia?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -865,6 +882,10 @@ export interface PayloadLockedDocument {
         value: number | FinBitacora;
       } | null)
     | ({
+        relationTo: 'fin-cuadres';
+        value: number | FinCuadre;
+      } | null)
+    | ({
         relationTo: 'inv-proveedores';
         value: number | InvProveedor;
       } | null)
@@ -1147,6 +1168,20 @@ export interface FinBitacoraSelect<T extends boolean = true> {
   valorNuevo?: T;
   motivo?: T;
   usuario?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "fin-cuadres_select".
+ */
+export interface FinCuadresSelect<T extends boolean = true> {
+  cuenta?: T;
+  mes?: T;
+  saldoBanco?: T;
+  notas?: T;
+  registradoPor?: T;
+  claveIdempotencia?: T;
   updatedAt?: T;
   createdAt?: T;
 }

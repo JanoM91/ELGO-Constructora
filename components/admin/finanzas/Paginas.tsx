@@ -15,7 +15,7 @@ import { api, Aviso, ErrorApi, fecha, Ficha, fmt, Icono, ListaPorDia, nuevaClave
  * Pide datos a /api/finanzas/<ruta> y los vuelve a pedir cuando cambian los
  * parámetros o cuando alguien llama a `recargar()`.
  */
-function useCarga<T>(ruta: string, params?: Record<string, string | number | null | undefined>) {
+export function useCarga<T>(ruta: string, params?: Record<string, string | number | null | undefined>) {
   const clave = `${ruta}?${JSON.stringify(params ?? {})}`
   const [vuelta, setVuelta] = useState(0)
   const [estado, setEstado] = useState<{ clave: string; data: T | null; error: string | null }>({ clave: '', data: null, error: null })
@@ -308,8 +308,11 @@ export function Saldos() {
   const { data, error } = useCarga<SaldosT>('saldos')
   return (
     <div className="fz-stack">
-      <h1 className="fz-h1">Saldos</h1>
-      <p className="fz-ayuda">Saldo = saldo inicial + entradas − salidas realizadas. Los compromisos pendientes no lo cambian.</p>
+      <div className="fz-entre">
+        <h1 className="fz-h1">Saldos</h1>
+        <Link className="fz-btn fz-btn--claro fz-btn--chico" href={`${base}/cuadre`}><Icono n="check" chico />Cuadrar con el banco</Link>
+      </div>
+      <p className="fz-ayuda">Saldo = saldo inicial + entradas − salidas realizadas. Los compromisos pendientes no lo cambian. Para compararlo con tus estados de cuenta, mes por mes, usa «Cuadre».</p>
       {error && <Aviso tono="malo">{error}</Aviso>}
       {data && (
         <>

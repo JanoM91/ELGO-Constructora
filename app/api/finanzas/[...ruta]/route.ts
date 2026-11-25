@@ -8,12 +8,15 @@ import {
   anular,
   arranque,
   avisarRevision,
+  cambiarInicio,
   catalogo,
   cerrarSesiones,
   clasificar,
   completarOperacion,
   contextoDesdeHeaders,
   corregir,
+  cuadre,
+  cuadreDelMes,
   descartarPropia,
   type Ctx,
   detalle,
@@ -21,6 +24,7 @@ import {
   equipo,
   ErrorFinanzas,
   fondos,
+  guardarCuadre,
   liquidar,
   listar,
   moverDinero,
@@ -72,6 +76,10 @@ import { notaDeVoz } from '@/lib/finanzas/voz'
  *   GET  por-completar?grupo=          tickets y planes por revisar de quien consulta (o un ticket)
  *   POST operaciones/:id/completar     completar concepto, importe, categoría y obra (quien capturó, mientras esté por revisar)
  *   POST operaciones/:id/descarte      descartar (anular) algo propio que está por revisar
+ *   GET  cuadre?cuenta=                cuadre con el banco: cada mes de la cuenta contra el saldo del banco
+ *   GET  cuadre/mes?cuenta&mes=AAAA-MM los movimientos del mes con el saldo que va quedando
+ *   POST cuadre                        guardar el saldo final del banco de un mes cerrado
+ *   POST cuadre/inicio                 punto de partida de una cuenta (saldo inicial y fecha; opcional: fecha de corte)
  *
  * Los reintentos son seguros: los POST que crean algo aceptan el encabezado
  * `Idempotency-Key` y un segundo envío con la misma clave no duplica nada.
@@ -138,6 +146,8 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
     if (a === 'fondos' && !b) return json(await fondos(ctx))
     if (a === 'equipo' && !b) return json(await equipo(ctx))
     if (a === 'por-completar' && !b) return json(await porCompletar(ctx, q.get('grupo')))
+    if (a === 'cuadre' && !b) return json(await cuadre(ctx, { cuenta: q.get('cuenta') && /^\d+$/.test(q.get('cuenta')!) ? Number(q.get('cuenta')) : null }))
+    if (a === 'cuadre' && b === 'mes' && !c) return json(await cuadreDelMes(ctx, { cuenta: idDeRuta(q.get('cuenta') ?? undefined), mes: q.get('mes') ?? '' }))
   } else {
     if (a === 'operaciones' && !b) {
       const { aviso, ...r } = await registrar(ctx, await leerJson(req), clave)
@@ -197,6 +207,11 @@ async function atender(metodo: 'GET' | 'POST', req: NextRequest, ruta: string[])
       return json({ ok: true })
     }
     if (a === 'arranque' && !b) return json(await arranque(ctx, await leerJson(req)))
+    if (a === 'cuadre' && !b) {
+      const r = await guardarCuadre(ctx, await leerJson(req), clave)
+      return json(r, r.duplicado ? 200 : 201)
+    }
+    if (a === 'cuadre' && b === 'inicio' && !c) return json(await cambiarInicio(ctx, await leerJson(req)))
     if (a === 'personas' && b && c === 'cerrar-sesiones') return json(await cerrarSesiones(ctx, idDeRuta(b)))
     if (a === 'movimientos-internos' && !b) {
       const r = await moverDinero(ctx, await leerJson(req), clave)

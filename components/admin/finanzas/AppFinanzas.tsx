@@ -23,6 +23,7 @@ import React from 'react'
 import type { Catalogo } from '../../../lib/finanzas/tipos'
 import AvisoInstalar from './AvisoInstalar'
 import Captura from './Captura'
+import Cuadre from './Cuadre'
 import Detalle from './Detalle'
 import Fondos from './Fondos'
 import Mover from './Mover'
@@ -62,6 +63,7 @@ export default function AppFinanzas({ catalogo, ruta, query, rutaAdmin, soloCapt
   else if (seccion === 'operacion' && id && /^\d+$/.test(id)) pantalla = <Detalle key={id} id={Number(id)} />
   else if (seccion === 'pendientes') pantalla = <Pendientes inicial={query.ver ?? null} />
   else if (seccion === 'saldos') pantalla = p.verSaldos ? <Saldos /> : <Aviso tono="info">Tu rol no incluye ver saldos.</Aviso>
+  else if (seccion === 'cuadre') pantalla = p.verSaldos ? <Cuadre key={query.cuenta ?? ''} cuentaInicial={numero(query.cuenta)} /> : <Aviso tono="info">Tu rol no incluye ver saldos ni el cuadre con el banco.</Aviso>
   else if (seccion === 'configuracion') pantalla = <Configuracion />
   else pantalla = <Aviso tono="aviso">Esa pantalla no existe. <Link href={base}>Volver al inicio de Finanzas</Link></Aviso>
 
@@ -72,6 +74,7 @@ export default function AppFinanzas({ catalogo, ruta, query, rutaAdmin, soloCapt
     ['obras', 'Obras', 'obra', p.verUtilidad],
     ['pendientes', 'Pendientes', 'bandeja', true],
     ['saldos', 'Saldos', 'cartera', p.verSaldos],
+    ['cuadre', 'Cuadre', 'check', p.verSaldos],
     ['fondos', 'Fondos', 'fondo', p.moverDinero || p.verSaldos || p.liquidar],
     ['mover', 'Mover dinero', 'traspaso', p.moverDinero],
     ['configuracion', 'Configuración', 'ajustes', p.configurar || p.gestionarUsuarios],
@@ -111,7 +114,7 @@ export default function AppFinanzas({ catalogo, ruta, query, rutaAdmin, soloCapt
         </main>
         {soloCaptura && (
           <nav className="fz-barra" aria-label="Secciones">
-            {visibles.filter(([k]) => k !== 'configuracion' && k !== 'saldos' && k !== 'fondos' && k !== 'mover').map(([k, l, ic]) => (
+            {visibles.filter(([k]) => k !== 'configuracion' && k !== 'saldos' && k !== 'cuadre' && k !== 'fondos' && k !== 'mover').map(([k, l, ic]) => (
               <Link key={k} href={k === 'registrar' ? `${base}/registrar?tipo=gasto` : k ? `${base}/${k}` : base} className={activa(k) ? 'is-on' : ''} aria-current={activa(k) ? 'page' : undefined}>
                 <Icono n={ic} />
                 <span>{l}</span>

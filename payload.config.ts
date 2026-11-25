@@ -10,7 +10,7 @@ import { resendEmailAdapter } from './lib/emailAdapter'
 import { Users } from './collections/Users'
 import { Roles } from './collections/Roles'
 import { FinActividades, FinCategorias, FinConfiguracion, FinCuentas } from './collections/finanzas/catalogos'
-import { FinBitacora, FinComprobantes, FinMovimientos, FinOperaciones } from './collections/finanzas/registros'
+import { FinBitacora, FinComprobantes, FinCuadres, FinMovimientos, FinOperaciones } from './collections/finanzas/registros'
 import { InvConfiguracion, InvEquivalencias, InvFamilias, InvMateriales, InvProveedores, InvUbicaciones } from './collections/inventario/catalogos'
 import { InvBitacora, InvDocumentos, InvMovimientos, InvPartidas, InvPrecios } from './collections/inventario/registros'
 import { protegerColeccion, protegerGlobal } from './lib/permisos'
@@ -77,7 +77,7 @@ export default buildConfig({
    */
   collections: [
     Users, Roles,
-    FinCuentas, FinCategorias, FinActividades, FinOperaciones, FinMovimientos, FinComprobantes, FinBitacora,
+    FinCuentas, FinCategorias, FinActividades, FinOperaciones, FinMovimientos, FinComprobantes, FinBitacora, FinCuadres,
     InvProveedores, InvFamilias, InvMateriales, InvEquivalencias, InvUbicaciones, InvDocumentos, InvPartidas, InvPrecios, InvMovimientos, InvBitacora,
   ].map(protegerColeccion),
   globals: [FinConfiguracion, InvConfiguracion].map(protegerGlobal),

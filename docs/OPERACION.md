@@ -69,7 +69,22 @@ No probado aquí: Supabase real, subida de comprobantes (necesita el almacén pr
 
 Verificación (local): `test:finanzas` 66/66; integración 44/44 + 38/38 (propuestas, avisos, ticket con IA simulada, plazos, completar, descartar, permisos); pantallas 320/390/1280 px sin errores ni desbordes. No probado: Claude real con tickets reales, correo real.
 
-## 7. Pendiente
+## 7. Cuadre con el banco (25-nov-2026)
+
+Finanzas → **Cuadre** (o Saldos → «Cuadrar con el banco»). Para cada cuenta, mes por mes:
+
+| Pieza | Qué hace |
+|---|---|
+| Punto de partida | Saldo inicial y fecha de inicio de la cuenta (el saldo final del día anterior en el estado de cuenta). Lo cambia quien tiene «Configurar»; con la casilla, esa fecha también queda como fecha de corte. |
+| Tarjeta del mes | Saldo al iniciar + entró − salió = saldo al cerrar. Cuenta cada movimiento por su fecha real, con traspasos; lo anulado no cuenta. |
+| Saldo del banco | En meses cerrados se captura el saldo final del estado de cuenta y queda «Cuadra» o «No cuadra» con la diferencia y qué buscar. Se guarda quién y cuándo; cambiarlo agrega un registro nuevo. En el mes en curso se compara sin guardar. |
+| Ver movimientos del mes | El estado de cuenta de la app: cada movimiento con el saldo que deja, para buscar la diferencia renglón por renglón. |
+
+Permisos: ver = «Ver saldos»; capturar el saldo del banco = «Ver saldos» + «Corregir» o «Configurar»; punto de partida = «Configurar». Migración `20261125_185035_cuadres_con_banco` (tabla `fin_cuadres` con RLS).
+
+Verificación (local, 25-nov-2026): `test:finanzas` 80/80; integración 41/41 (caso ELGO: saldo inicial de prueba y fecha equivocada → aviso de movimientos anteriores; punto de partida al 1-sep con corte; septiembre cuadra; octubre con $1,500 de diferencia → «falta una salida»; reintento sin duplicar; mes en curso y meses anteriores al inicio rechazados; residente 403; contador ve sin guardar y sin concepto de nómina; `/api/fin-cuadres` 403); pantallas 320/390/1280 px sin errores ni desbordes.
+
+## 8. Pendiente
 
 - **Producción (12-oct-2026)**: publicada en https://elgo-finanzas.vercel.app; las 2 migraciones se aplicaron solas (18 tablas, todas con RLS, dueño `payload_app`). `FINANZAS_BLOB_READ_WRITE_TOKEN` ya agregado. Falta `ANTHROPIC_API_KEY` (nota de voz, foto de ticket y pagos a plazos) y, opcional, Resend para avisos.
 - **Tipografía de ELGO**: la palabra «ELGO» bajo el isotipo usa Inter Display ExtraBold; si ELGO tiene su tipografía o el archivo con texto, cambiarlo en `scripts/marca-elgo/generar-logos.py`.

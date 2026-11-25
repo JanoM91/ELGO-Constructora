@@ -230,3 +230,30 @@ export const FinBitacora: CollectionConfig = {
     { name: 'usuario', type: 'relationship', relationTo: 'users', required: true },
   ],
 }
+
+/**
+ * Cuadre con el banco (24-nov-2026): el saldo final que dice el estado de
+ * cuenta para una cuenta y un mes. La app calcula su propio saldo al cerrar el
+ * mes y los compara (lib/finanzas/reglas.ts → cuadrePorMes).
+ *
+ * Nada se sobrescribe: cada vez que alguien captura o cambia el saldo del
+ * banco de un mes se guarda un registro nuevo y manda el más reciente. Así
+ * queda quién lo capturó y cuándo. Igual que los demás registros, solo se
+ * escribe por lib/finanzas/servicio.ts.
+ */
+export const FinCuadres: CollectionConfig = {
+  slug: 'fin-cuadres',
+  typescript: { interface: 'FinCuadre' },
+  labels: { singular: 'Cuadre con el banco', plural: 'Cuadres con el banco' },
+  admin: { hidden: true },
+  access: cerrado,
+  fields: [
+    { name: 'cuenta', type: 'relationship', relationTo: 'fin-cuentas', required: true, index: true },
+    /* AAAA-MM */
+    { name: 'mes', type: 'text', required: true, index: true },
+    { name: 'saldoBanco', type: 'number', required: true },
+    { name: 'notas', type: 'text' },
+    { name: 'registradoPor', type: 'relationship', relationTo: 'users', required: true },
+    { name: 'claveIdempotencia', type: 'text', unique: true, index: true },
+  ],
+}

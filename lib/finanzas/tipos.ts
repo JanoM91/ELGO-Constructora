@@ -296,3 +296,64 @@ export type ResultadoInterpretacionPlan = {
   obraTexto: string | null
   dudas: string[]
 }
+
+/* ───────── Cuadre con el banco (24-nov-2026) ───────── */
+
+/**
+ * Un mes del cuadre de una cuenta (ver `cuadrePorMes` en reglas.ts) más quién
+ * capturó el saldo del banco y cuándo.
+ */
+export type MesCuadre = {
+  mes: string
+  desde: string
+  hasta: string
+  enCurso: boolean
+  saldoInicioCentavos: number
+  entradasCentavos: number
+  gastosCentavos: number
+  traspasosEntraCentavos: number
+  traspasosSaleCentavos: number
+  saldoCierreCentavos: number
+  movimientos: number
+  bancoCentavos: number | null
+  diferenciaCentavos: number | null
+  estado: 'cuadra' | 'diferencia' | 'sin_banco' | 'en_curso'
+  pista: 'saldo_inicial' | 'falta_salida' | 'falta_entrada' | null
+  banco: { notas: string; registradoPor: Ref; registradoEn: string } | null
+}
+
+export type CuentaCuadre = CuentaVista & { saldoCentavos: number; fechaInicio: string | null }
+
+export type Cuadre = {
+  hoy: string
+  fechaCorte: string | null
+  cuentas: CuentaCuadre[]
+  cuenta: CuentaCuadre | null
+  saldoInicialCentavos: number
+  /** La fecha del saldo inicial de esta cuenta (si no tiene, la fecha de corte). */
+  inicio: string | null
+  /** Movimientos con fecha anterior al inicio: no deberían existir; entran al saldo del primer mes. */
+  antes: { movimientos: number; netoCentavos: number }
+  /** Del más reciente al más antiguo. */
+  meses: MesCuadre[]
+  puedeGuardar: boolean
+  puedeCambiarInicio: boolean
+}
+
+/** Un renglón del «estado de cuenta» de un mes: un movimiento con el saldo que deja. */
+export type RenglonCuadre = {
+  id: number
+  fecha: string
+  operacionId: number
+  folio: string
+  concepto: string
+  detalle: string
+  tipo: string
+  direccion: 'entra' | 'sale'
+  centavos: number
+  saldoCentavos: number
+  /** Nómina u otra categoría restringida que este rol no ve: cuenta en el saldo, sin concepto ni liga. */
+  restringido: boolean
+}
+
+export type DetalleCuadre = { cuenta: CuentaCuadre; mes: MesCuadre; renglones: RenglonCuadre[] }
